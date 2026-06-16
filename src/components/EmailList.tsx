@@ -80,7 +80,7 @@ export default function EmailList({
   };
 
   return (
-    <div className="min-w-0 border-r flex flex-col flex-1" style={{ borderColor: "rgba(var(--border-primary))" }}>
+    <div className="min-w-0 min-h-0 border-r flex flex-col flex-1 overflow-hidden" style={{ borderColor: "rgba(var(--border-primary))" }}>
       {/* Header */}
       <header className="flex px-6 pt-6 pb-4 items-center gap-4">
         <h1 className="font-semibold text-xl leading-7 tracking-tight" style={{ color: "rgb(var(--text-primary))" }}>

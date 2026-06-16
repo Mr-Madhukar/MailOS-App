@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   Archive,
   Command,
@@ -96,7 +97,7 @@ export default function Sidebar({
     <aside className="sidebar-desktop shrink-0 border-r flex p-4 flex-col w-[200px] justify-between transition-colors" style={{ borderColor: "rgba(var(--border-primary))", background: "rgb(var(--bg-primary))" }}>
       <div className="flex flex-col">
         {/* Logo */}
-        <div className="flex px-2 pt-2 pb-4 items-center gap-2">
+        <Link href="/" className="flex px-2 pt-2 pb-4 items-center gap-2">
           <div
             className="size-7 rounded-lg flex justify-center items-center"
             style={{ background: "rgba(var(--text-primary), 0.1)", color: "rgb(var(--text-primary))" }}
@@ -106,7 +107,7 @@ export default function Sidebar({
           <span className="font-semibold text-lg leading-7 tracking-tight" style={{ color: "rgb(var(--text-primary))" }}>
             MailOS
           </span>
-        </div>
+        </Link>
 
         {/* Compose Button */}
         <button

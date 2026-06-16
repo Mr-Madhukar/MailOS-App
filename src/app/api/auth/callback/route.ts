@@ -9,11 +9,14 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
-    const pluginId = url.searchParams.get("state"); // We stored the pluginId in state
 
-    if (!code || !pluginId) {
-      return NextResponse.json({ error: "Missing code or state parameter" }, { status: 400 });
+    if (!code) {
+      return NextResponse.json({ error: "Missing code parameter" }, { status: 400 });
     }
+
+    // State format: "pluginId" or "pluginId:origin" (e.g., "gmail:signup")
+    const rawState = url.searchParams.get("state") || "";
+    const [pluginId, origin] = rawState.split(":");
 
     if (pluginId !== "gmail" && pluginId !== "googlecalendar") {
       return NextResponse.json({ error: "Invalid state parameter" }, { status: 400 });
@@ -78,9 +81,10 @@ export async function GET(req: Request) {
       }
     }
 
-    // Redirect to home page
+    // Redirect based on origin
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${appUrl}/?connected=${pluginId}`);
+    const redirectBase = origin === "signup" ? "/signup" : "/dashboard";
+    return NextResponse.redirect(`${appUrl}${redirectBase}?connected=${pluginId}`);
   } catch (error: any) {
     console.error("OAuth Callback Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -332,7 +332,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
-            <Link href="/home" className="flex items-center gap-2 shrink-0">
+            <Link href="/" className="flex items-center gap-2 shrink-0">
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center"
                 style={{ background: "rgb(var(--accent-purple))" }}
@@ -376,7 +376,7 @@ export default function HomePage() {
 
               {/* Sign In - Desktop */}
               <Link
-                href="/"
+                href="/dashboard"
                 className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-lg hp-btn-ghost"
                 style={{
                   color: "rgb(var(--text-secondary))",
@@ -388,7 +388,7 @@ export default function HomePage() {
 
               {/* Get Started - Desktop */}
               <Link
-                href="/"
+                href="/signup"
                 className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg hp-btn-primary"
                 style={{
                   background: "rgb(var(--accent-purple))",
@@ -443,7 +443,7 @@ export default function HomePage() {
               style={{ borderTop: "0.5px solid rgba(var(--border-primary))" }}
             >
               <Link
-                href="/"
+                href="/dashboard"
                 className="block px-3 py-2 text-sm rounded-lg text-center"
                 style={{
                   color: "rgb(var(--text-secondary))",
@@ -453,7 +453,7 @@ export default function HomePage() {
                 Sign in
               </Link>
               <Link
-                href="/"
+                href="/signup"
                 className="block px-3 py-2 text-sm font-medium rounded-lg text-center"
                 style={{ background: "rgb(var(--accent-purple))", color: "#fff" }}
               >
@@ -511,7 +511,7 @@ export default function HomePage() {
           {/* Buttons */}
           <div className="flex items-center justify-center gap-3 mb-5">
             <Link
-              href="/"
+              href="/signup"
               className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
               style={{
                 background: "rgb(var(--accent-purple))",
@@ -989,7 +989,7 @@ export default function HomePage() {
                 {/* CTA Button */}
                 <div className="px-6 pb-6">
                   <Link
-                    href="/"
+                    href="/signup"
                     className="block w-full text-center py-2.5 text-sm font-medium rounded-lg transition-all"
                     style={{
                       background: plan.popular
@@ -1315,7 +1315,7 @@ export default function HomePage() {
             </p>
             <div className="flex items-center justify-center gap-3 flex-wrap">
               <Link
-                href="/"
+                href="/signup"
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
                 style={{
                   background: "rgb(var(--accent-purple))",
@@ -1326,7 +1326,7 @@ export default function HomePage() {
                 Start for free
               </Link>
               <Link
-                href="/"
+                href="/dashboard"
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-ghost"
                 style={{
                   color: "rgb(var(--text-secondary))",
@@ -1350,7 +1350,7 @@ export default function HomePage() {
       >
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           {/* Logo */}
-          <Link href="/home" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div
               className="w-6 h-6 rounded-md flex items-center justify-center"
               style={{ background: "rgb(var(--accent-purple))" }}

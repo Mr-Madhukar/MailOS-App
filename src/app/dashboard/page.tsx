@@ -531,7 +531,7 @@ function MailOSApp() {
 
           {/* Email List */}
           <div 
-            className={`flex flex-col min-w-[260px] h-full shrink-0 border-r ${showEmailThread ? "hide-mobile" : "flex-1"}`} 
+            className={`flex flex-col min-w-[260px] h-full shrink-0 border-r overflow-hidden ${showEmailThread ? "hide-mobile" : "flex-1"}`} 
             style={{ 
               width: showEmailThread ? `${listWidth}px` : undefined,
               borderColor: "rgba(var(--border-primary))"

@@ -42,12 +42,15 @@ export async function GET(req: Request) {
     const redirectUri = redirectUrl || "http://localhost:3000/api/auth/callback";
     
     // Build parameters explicitly
+    const from = url.searchParams.get("from") || "";
+    const state = from ? `${pluginId}:${from}` : pluginId;
+
     const authParams: Record<string, string> = {
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
       scope: oauthCfg.scopes.join(" "),
-      state: pluginId,
+      state,
     };
 
     if (oauthCfg.authParams) {
