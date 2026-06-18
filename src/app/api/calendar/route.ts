@@ -324,6 +324,7 @@ export async function POST(req: Request) {
     const result = await userCorsair.googlecalendar.api.events.create({
       calendarId: "primary",
       event: eventBody,
+      sendUpdates: "all",
     });
 
     return NextResponse.json({ success: true, event: result });
