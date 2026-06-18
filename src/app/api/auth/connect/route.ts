@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: `No oauthConfig found for ${pluginId}` }, { status: 500 });
     }
 
-    const redirectUri = redirectUrl || "http://localhost:3000/api/auth/callback";
+    const redirectUri = redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
     
     // Build parameters explicitly
     const authParams: Record<string, string> = {

@@ -94,13 +94,13 @@ export async function POST(req: Request) {
     if (gmail) {
       if (gmail.clientId) await corsair.keys.gmail.set_client_id(gmail.clientId);
       if (gmail.clientSecret) await corsair.keys.gmail.set_client_secret(gmail.clientSecret);
-      await corsair.keys.gmail.set_redirect_url(gmail.redirectUrl || "http://localhost:3000/api/auth/callback");
+      await corsair.keys.gmail.set_redirect_url(gmail.redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback");
     }
 
     if (calendar) {
       if (calendar.clientId) await corsair.keys.googlecalendar.set_client_id(calendar.clientId);
       if (calendar.clientSecret) await corsair.keys.googlecalendar.set_client_secret(calendar.clientSecret);
-      await corsair.keys.googlecalendar.set_redirect_url(calendar.redirectUrl || "http://localhost:3000/api/auth/callback");
+      await corsair.keys.googlecalendar.set_redirect_url(calendar.redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback");
     }
 
     return NextResponse.json({ success: true });

@@ -147,7 +147,7 @@ export async function GET(req: Request) {
     }
 
     // 4. Exchange code for tokens
-    const redirectUri = redirectUrl || "http://localhost:3000/api/auth/callback";
+    const redirectUri = redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
     const tokens = await exchangeCodeForTokens(code, clientId, clientSecret, oauthCfg, redirectUri);
 
     if (!tokens.access_token) {
