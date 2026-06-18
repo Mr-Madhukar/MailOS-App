@@ -6,6 +6,16 @@ MailOS is a modern, high-performance productivity application that acts as a key
 
 ---
 
+## 🌐 Live Demo & Demo Credentials
+
+You can access the live version of MailOS at: **[https://mailos-app.vercel.app](https://mailos-app.vercel.app)**
+
+To test the application, you can use the following demo credentials:
+* **Email:** `madhukar200202@gmail.com`
+* **Password:** `Mailos@1`
+
+---
+
 ## 🛠️ Tech Stack
 
 MailOS is built using modern, type-safe, and scalable web technologies:

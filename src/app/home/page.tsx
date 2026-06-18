@@ -1452,7 +1452,7 @@ export default function HomePage() {
               { label: "Privacy", href: "/privacy", isExternal: false },
               { label: "Terms", href: "/terms", isExternal: false },
               { label: "GitHub", href: "https://github.com/Mr-Madhukar/MailOS-App", isExternal: true },
-              { label: "Twitter/X", href: "#", isExternal: true },
+              { label: "Twitter/X", href: "https://x.com/Mr_Madhukar_", isExternal: true },
             ].map((link) =>
               link.isExternal ? (
                 <a
