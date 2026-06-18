@@ -24,6 +24,7 @@ interface SettingsModalProps {
     googlecalendar: { clientId: string; clientSecret?: string };
   }) => Promise<boolean>;
   onConnect: (plugin: "gmail" | "googlecalendar") => void;
+  onDisconnect: (plugin: "gmail" | "googlecalendar") => void;
 }
 
 export default function SettingsModal({
@@ -32,6 +33,7 @@ export default function SettingsModal({
   settings,
   onSave,
   onConnect,
+  onDisconnect,
 }: SettingsModalProps) {
   const [tempGmail, setTempGmail] = useState({ clientId: "", clientSecret: "" });
   const [tempCalendar, setTempCalendar] = useState({ clientId: "", clientSecret: "" });
@@ -106,12 +108,26 @@ export default function SettingsModal({
           {title}
         </span>
         {connected ? (
-          <span
-            className="ml-auto flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
-            style={{ color: "rgb(var(--accent-green))", background: "rgba(var(--accent-green), 0.1)" }}
-          >
-            <ShieldCheck className="size-3" /> Connected
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span
+              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
+              style={{ color: "rgb(var(--accent-green))", background: "rgba(var(--accent-green), 0.1)" }}
+            >
+              <ShieldCheck className="size-3" /> Connected
+            </span>
+            <button
+              type="button"
+              onClick={() => onDisconnect(plugin)}
+              className="text-[10px] px-2 py-0.5 rounded-full font-semibold transition-all hover:bg-[rgba(var(--accent-red),0.15)]"
+              style={{
+                color: "rgb(var(--accent-red))",
+                border: "0.5px solid rgba(var(--accent-red), 0.3)",
+                background: "transparent",
+              }}
+            >
+              Disconnect
+            </button>
+          </div>
         ) : (
           <button
             type="button"

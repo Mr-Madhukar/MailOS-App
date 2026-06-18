@@ -174,6 +174,39 @@ function MailOSApp() {
     }
   }, [addToast]);
 
+  const handleDisconnect = useCallback(
+    async (plugin: "gmail" | "googlecalendar") => {
+      try {
+        const res = await fetch("/api/auth/disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plugin }),
+        });
+        if (res.ok) {
+          await fetchSettings();
+          if (plugin === "gmail") {
+            emailHook.refreshEmails();
+          } else {
+            calendarHook.refreshEvents();
+          }
+          addToast({
+            message: `Disconnected ${plugin === "gmail" ? "Gmail" : "Google Calendar"}`,
+            type: "success",
+          });
+        } else {
+          const data = await res.json();
+          addToast({
+            message: data.error || `Failed to disconnect ${plugin}`,
+            type: "error",
+          });
+        }
+      } catch {
+        addToast({ message: "Disconnection error", type: "error" });
+      }
+    },
+    [fetchSettings, emailHook, calendarHook, addToast]
+  );
+
   // ── Compose handlers ──
   const openCompose = useCallback(
     (initial?: { to: string; subject: string; body: string }) => {
@@ -661,6 +694,7 @@ function MailOSApp() {
         settings={settings as any}
         onSave={handleSaveSettings}
         onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
       />
 
       <ShortcutsModal

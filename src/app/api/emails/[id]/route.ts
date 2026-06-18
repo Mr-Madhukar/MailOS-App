@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { corsair } from "@/server/corsair";
+import { corsair, getFreshGmailAccessToken } from "@/server/corsair";
 import { cookies } from "next/headers";
 import { verifyJwt } from "@/lib/jwt";
 
@@ -28,7 +28,7 @@ export async function GET(
     let isConnected = false;
     let accessToken: string | null = null;
     try {
-      accessToken = await userCorsair.gmail.keys.get_access_token();
+      accessToken = await getFreshGmailAccessToken(userId);
       isConnected = !!accessToken;
     } catch {}
 

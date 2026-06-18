@@ -4,7 +4,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { verifyJwt } from "@/lib/jwt";
-import { corsair } from "@/server/corsair";
+import { corsair, getFreshGmailAccessToken } from "@/server/corsair";
 
 // Initialize OpenRouter provider
 const openrouter = createOpenRouter({
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     let calendarAccessToken: string | null = null;
 
     try {
-      gmailAccessToken = await userCorsair.gmail.keys.get_access_token();
+      gmailAccessToken = await getFreshGmailAccessToken(userId);
       gmailConnected = !!gmailAccessToken;
     } catch {}
 
