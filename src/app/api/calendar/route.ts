@@ -265,11 +265,24 @@ export async function POST(req: Request) {
     const { summary, description, startDateTime, endDateTime, attendees, addMeet } =
       await req.json();
 
-    if (!summary || !startDateTime || !endDateTime) {
+    if (!summary || !startDateTime) {
       return NextResponse.json(
-        { error: "Summary, start time, and end time are required" },
+        { error: "Summary and start time are required" },
         { status: 400 }
       );
+    }
+
+    const start = new Date(startDateTime);
+    if (isNaN(start.getTime())) {
+      return NextResponse.json(
+        { error: `Invalid start date/time format: "${startDateTime}"` },
+        { status: 400 }
+      );
+    }
+
+    let end = endDateTime ? new Date(endDateTime) : new Date(start.getTime() + 60 * 60 * 1000);
+    if (isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+      end = new Date(start.getTime() + 60 * 60 * 1000);
     }
 
     let isConnected = false;
@@ -286,11 +299,11 @@ export async function POST(req: Request) {
       summary,
       description: description || "",
       start: {
-        dateTime: startDateTime,
+        dateTime: start.toISOString(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       end: {
-        dateTime: endDateTime,
+        dateTime: end.toISOString(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     };

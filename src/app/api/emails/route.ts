@@ -466,6 +466,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const emailMatch = to.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const cleanTo = emailMatch ? emailMatch[0] : to;
+
     let isConnected = false;
     try {
       const accessToken = await userCorsair.gmail.keys.get_access_token();
@@ -493,7 +496,7 @@ export async function POST(req: Request) {
     } catch {}
 
     const headers = [
-      `To: ${to}`,
+      `To: ${cleanTo}`,
       `Subject: ${subject}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=utf-8",

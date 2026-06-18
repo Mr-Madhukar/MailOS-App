@@ -91,11 +91,11 @@ export async function POST(req: Request) {
         description:
           "Send an email via Gmail. Use this when the user asks to send, compose, or draft an email to someone.",
         parameters: z.object({
-          to: z.string().describe("Recipient email address"),
-          subject: z.string().describe("Email subject line"),
-          body: z.string().describe("Email body content in plain text"),
-        }),
-        execute: async ({ to, subject, body }) => {
+          to: z.string().optional().describe("Recipient email address"),
+          subject: z.string().optional().describe("Email subject line"),
+          body: z.string().optional().describe("Email body content in plain text"),
+        }).passthrough(),
+        execute: async (args: any) => {
           if (!gmailConnected || !gmailAccessToken) {
             return {
               success: false,
@@ -103,6 +103,22 @@ export async function POST(req: Request) {
             };
           }
           try {
+            // Resolve parameters dynamically supporting variations
+            const to = args.to || args.recipient || args.email || args.toEmail;
+            const subject = args.subject || args.title || "No Subject";
+            const body = args.body || args.message || args.content || "";
+
+            if (!to) {
+              return {
+                success: false,
+                error: "Failed to send email: Recipient email address is required.",
+              };
+            }
+
+            // Extract the first valid email address from the to field in case the model included extra text
+            const emailMatch = to.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            const cleanTo = emailMatch ? emailMatch[0] : to;
+
             // Fetch the user's email address for the From header (required by Gmail API)
             let fromEmail = "";
             try {
@@ -117,7 +133,7 @@ export async function POST(req: Request) {
             } catch {}
 
             const headers = [
-              `To: ${to}`,
+              `To: ${cleanTo}`,
               `Subject: ${subject}`,
               "MIME-Version: 1.0",
               "Content-Type: text/plain; charset=utf-8",
@@ -140,7 +156,7 @@ export async function POST(req: Request) {
 
             return {
               success: true,
-              message: `Email sent to ${to} with subject "${subject}"`,
+              message: `Email sent to ${cleanTo} with subject "${subject}"`,
             };
           } catch (error: any) {
             const detail = error.body ? JSON.stringify(error.body) : error.message;
@@ -157,20 +173,23 @@ export async function POST(req: Request) {
         description:
           "Create a Google Calendar event. Use when the user asks to schedule a meeting, create an event, or add something to their calendar.",
         parameters: z.object({
-          summary: z.string().describe("Event title"),
+          summary: z.string().optional().describe("Event title"),
           startDateTime: z
             .string()
+            .optional()
             .describe("Start date/time in ISO 8601 format with timezone offset (e.g., 2026-06-19T15:00:00+05:30). MUST include timezone offset."),
           endDateTime: z
             .string()
-            .describe("End date/time in ISO 8601 format with timezone offset (e.g., 2026-06-19T16:00:00+05:30). MUST include timezone offset."),
-          description: z.string().default("").describe("Optional event description"),
+            .optional()
+            .describe("Optional end date/time in ISO 8601 format. If missing or invalid, defaults to 1 hour after startDateTime."),
+          description: z.string().optional().default("").describe("Optional event description"),
           attendees: z
             .array(z.string())
+            .optional()
             .default([])
             .describe("Optional array of attendee email addresses"),
-        }),
-        execute: async ({ summary, startDateTime, endDateTime, description, attendees }) => {
+        }).passthrough(),
+        execute: async (args: any) => {
           if (!calendarConnected) {
             return {
               success: false,
@@ -179,33 +198,45 @@ export async function POST(req: Request) {
             };
           }
           try {
-            // Ensure dateTime values are valid ISO 8601 with timezone info
             const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const ensureValidDateTime = (dt: string): string => {
-              // If the datetime already has a timezone offset (+ or Z at end), use as-is
-              if (/[Zz]$/.test(dt) || /[+-]\d{2}:\d{2}$/.test(dt) || /[+-]\d{4}$/.test(dt)) {
-                return dt;
-              }
-              // Otherwise, parse and convert to a proper ISO string
+
+            // Resolve the event parameters dynamically supporting both camelCase and snake_case naming conventions
+            const summary = args.summary || args.title || "Meeting";
+            const startDateTime = args.startDateTime || args.start_time || args.startTime;
+            const endDateTime = args.endDateTime || args.end_time || args.endTime;
+            const description = args.description || "";
+            const attendees = args.attendees || [];
+
+            // Helper to parse date/time string robustly
+            const parseToDate = (dt: string): Date | null => {
+              if (!dt) return null;
               const parsed = new Date(dt);
-              if (!isNaN(parsed.getTime())) {
-                return parsed.toISOString();
-              }
-              return dt; // fallback, let Google API handle the error
+              return isNaN(parsed.getTime()) ? null : parsed;
             };
 
-            const validStart = ensureValidDateTime(startDateTime);
-            const validEnd = ensureValidDateTime(endDateTime);
+            const start = parseToDate(startDateTime);
+            if (!start) {
+              return {
+                success: false,
+                error: `Failed to create event: Invalid start date/time "${startDateTime}"`,
+              };
+            }
+
+            let end = parseToDate(endDateTime || "");
+            // Default end to 1 hour after start if missing, invalid, or before/equal to start
+            if (!end || end.getTime() <= start.getTime()) {
+              end = new Date(start.getTime() + 60 * 60 * 1000);
+            }
 
             const eventBody: any = {
               summary,
               description: description || "",
               start: {
-                dateTime: validStart,
+                dateTime: start.toISOString(),
                 timeZone: tz,
               },
               end: {
-                dateTime: validEnd,
+                dateTime: end.toISOString(),
                 timeZone: tz,
               },
             };
@@ -223,7 +254,7 @@ export async function POST(req: Request) {
 
             return {
               success: true,
-              message: `Event "${summary}" created on ${new Date(validStart).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} at ${new Date(validStart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+              message: `Event "${summary}" created on ${new Date(start).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} at ${new Date(start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
               eventId: result?.id,
             };
           } catch (error: any) {
