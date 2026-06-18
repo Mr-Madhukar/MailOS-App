@@ -1,9 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { corsair } from "@/server/corsair";
+import { corsair, db } from "@/server/corsair";
+import { corsairEntities } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { verifyJwt } from "@/lib/jwt";
+import { getEmbedding } from "@/lib/embeddings";
 
 const MOCK_EVENTS = [
   {
@@ -67,40 +70,47 @@ export async function GET() {
     const userCorsair = corsair.withTenant(userId);
 
     let isConnected = false;
+    let accessToken: string | null = null;
     try {
-      const accessToken = await userCorsair.googlecalendar.keys.get_access_token();
+      accessToken = await userCorsair.googlecalendar.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
-    if (!isConnected) {
+    if (!isConnected || !accessToken) {
       return NextResponse.json({
         demo: true,
         events: MOCK_EVENTS,
       });
     }
 
-    // Set search range: from 30 days ago to 30 days in the future
-    const timeMin = new Date();
-    timeMin.setDate(timeMin.getDate() - 30);
-    timeMin.setHours(0, 0, 0, 0);
+    // Google Calendar is connected. Read from DB cache first.
+    let cachedEntities: any[] = [];
+    try {
+      cachedEntities = await userCorsair.googlecalendar.db.events.list({ limit: 150 });
+    } catch (dbErr) {
+      console.error("Failed to list cached calendar events:", dbErr);
+    }
 
-    const timeMax = new Date();
-    timeMax.setDate(timeMax.getDate() + 30);
-    timeMax.setHours(23, 59, 59, 999);
+    // If cache is empty, trigger a synchronous initial sync
+    if (cachedEntities.length === 0) {
+      console.log(`[GET /api/calendar] Cache empty. Performing initial sync for user ${userId}...`);
+      await syncCalendarToCache(userId, accessToken);
+      try {
+        cachedEntities = await userCorsair.googlecalendar.db.events.list({ limit: 150 });
+      } catch {}
+    } else {
+      // Trigger background sync to keep it fresh
+      console.log(`[GET /api/calendar] Cache hit (count: ${cachedEntities.length}). Triggering background sync...`);
+      syncCalendarToCache(userId, accessToken).catch((syncErr) => {
+        console.error("Background calendar sync failed:", syncErr);
+      });
+    }
 
-    const listResult = await userCorsair.googlecalendar.api.events.getMany({
-      calendarId: "primary",
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      singleEvents: true,
-      orderBy: "startTime",
-    });
-
-    const items = listResult.items || [];
-    
-    const formattedEvents = items.map((item) => {
-      const startDateTime = item.start?.dateTime || item.start?.date || "";
-      const endDateTime = item.end?.dateTime || item.end?.date || "";
+    // Format events for UI
+    const formattedEvents = cachedEntities.map((item: any) => {
+      const event = item.data;
+      const startDateTime = event.start?.dateTime || event.start?.date || "";
+      const endDateTime = event.end?.dateTime || event.end?.date || "";
       
       let startStr = "";
       let endStr = "";
@@ -121,9 +131,9 @@ export async function GET() {
         }
 
         // Format times
-        if (item.start?.dateTime) {
+        if (event.start?.dateTime) {
           startStr = startD.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-          if (endD && item.end?.dateTime) {
+          if (endD && event.end?.dateTime) {
             endStr = endD.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
             timeRaw = `${startStr} – ${endStr}`;
           } else {
@@ -134,30 +144,30 @@ export async function GET() {
 
       // Determine type: video, users, or generic alert
       let type = "alert";
-      let details = item.location || "";
+      let details = event.location || "";
       let color = "#378add"; // Default blue
 
-      if (item.hangoutLink) {
+      if (event.hangoutLink) {
         type = "video";
         details = "Google Meet";
         color = "#1d9e75"; // Green for video
-      } else if (item.attendees && item.attendees.length > 0) {
+      } else if (event.attendees && event.attendees.length > 0) {
         type = "users";
-        details = item.attendees
-          .map((a) => a.displayName || a.email?.split("@")[0] || "")
+        details = event.attendees
+          .map((a: any) => a.displayName || a.email?.split("@")[0] || "")
           .slice(0, 2)
-          .join(", ") + (item.attendees.length > 2 ? " + team" : "");
+          .join(", ") + (event.attendees.length > 2 ? " + team" : "");
         color = "#7c6af7"; // Purple for meetings
       }
 
-      if (item.summary?.toLowerCase().includes("deadline") || item.summary?.toLowerCase().includes("urgent")) {
+      if (event.summary?.toLowerCase().includes("deadline") || event.summary?.toLowerCase().includes("urgent")) {
         type = "alert";
         color = "#e24b4a"; // Red for deadlines
       }
 
       return {
-        id: item.id || Math.random().toString(),
-        summary: item.summary || "Untitled Event",
+        id: item.entityId,
+        summary: event.summary || "Untitled Event",
         start: startStr,
         end: endStr,
         timeRaw,
@@ -181,6 +191,59 @@ export async function GET() {
       events: MOCK_EVENTS,
       error: error.message,
     });
+  }
+}
+
+// Sync Calendar helper function
+async function syncCalendarToCache(userId: string, accessToken: string) {
+  const userCorsair = corsair.withTenant(userId);
+  try {
+    const timeMin = new Date();
+    timeMin.setDate(timeMin.getDate() - 30);
+    timeMin.setHours(0, 0, 0, 0);
+
+    const timeMax = new Date();
+    timeMax.setDate(timeMax.getDate() + 30);
+    timeMax.setHours(23, 59, 59, 999);
+
+    const listResult = await userCorsair.googlecalendar.api.events.getMany({
+      calendarId: "primary",
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    const items = listResult.items || [];
+
+    for (const item of items) {
+      if (!item.id) continue;
+      try {
+        const cached = await userCorsair.googlecalendar.db.events.findByEntityId(item.id);
+        if (cached && (cached as any).embedding) {
+          // Already cached and embedded!
+          continue;
+        }
+
+        const upserted = await userCorsair.googlecalendar.db.events.upsertByEntityId(item.id, item as any);
+
+        // Generate embedding
+        const summary = item.summary || "Untitled Event";
+        const description = item.description || "";
+        const location = item.location || "";
+        const embeddingText = `Event: ${summary}\nDescription: ${description}\nLocation: ${location}`;
+
+        const embedding = await getEmbedding(embeddingText);
+
+        await db.update(corsairEntities)
+          .set({ embedding, updatedAt: new Date() })
+          .where(eq(corsairEntities.id, upserted.id));
+      } catch (itemErr) {
+        console.error(`Error caching calendar item ${item.id}:`, itemErr);
+      }
+    }
+  } catch (error) {
+    console.error("Error in syncCalendarToCache:", error);
   }
 }
 

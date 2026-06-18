@@ -8,6 +8,7 @@ export interface Email {
   id: string;
   from: string;
   to?: string;
+  cc?: string;
   subject: string;
   snippet: string;
   body?: string;
@@ -50,6 +51,7 @@ interface UseEmailsReturn {
   markRead: (id: string) => Promise<void>;
   sendEmail: (to: string, subject: string, body: string) => Promise<void>;
   replyToEmail: (id: string, body: string) => Promise<void>;
+  deleteEmail: (id: string) => Promise<void>;
   refreshEmails: () => Promise<void>;
 }
 
@@ -265,6 +267,16 @@ export function useEmails(): UseEmailsReturn {
     [fetchEmails]
   );
 
+  const deleteEmail = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/emails/${id}`, {
+        method: "DELETE",
+      });
+      // Optimistic update
+      setEmails((prev) => prev.filter((e) => e.id !== id));
+    } catch {}
+  }, []);
+
   return {
     emails,
     filteredEmails,
@@ -286,6 +298,7 @@ export function useEmails(): UseEmailsReturn {
     markRead,
     sendEmail,
     replyToEmail,
+    deleteEmail,
     refreshEmails: fetchEmails,
   };
 }

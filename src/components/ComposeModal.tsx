@@ -22,6 +22,7 @@ interface ComposeModalProps {
   initialTo?: string;
   initialSubject?: string;
   initialBody?: string;
+  forceCalendar?: boolean;
 }
 
 // Calendar intent detection keywords
@@ -52,6 +53,7 @@ export default function ComposeModal({
   initialTo = "",
   initialSubject = "",
   initialBody = "",
+  forceCalendar = false,
 }: ComposeModalProps) {
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
@@ -65,29 +67,6 @@ export default function ComposeModal({
   });
   const [minimized, setMinimized] = useState(false);
   const toInputRef = useRef<HTMLInputElement>(null);
-
-  // Focus on open
-  useEffect(() => {
-    if (isOpen && !minimized) {
-      setTimeout(() => toInputRef.current?.focus(), 100);
-    }
-  }, [isOpen, minimized]);
-
-  // Calendar-aware detection
-  useEffect(() => {
-    const lowerBody = body.toLowerCase();
-    const lowerSubject = subject.toLowerCase();
-    const textToCheck = `${lowerBody} ${lowerSubject}`;
-    const hasCalendarIntent = CALENDAR_KEYWORDS.some((kw) => textToCheck.includes(kw));
-    setShowCalendarPrompt(hasCalendarIntent && body.length > 10);
-  }, [body, subject]);
-
-  // Reset on initial values change
-  useEffect(() => {
-    setTo(initialTo);
-    setSubject(initialSubject);
-    setBody(initialBody);
-  }, [initialTo, initialSubject, initialBody]);
 
   const handleSend = async () => {
     if (!to.trim() || !subject.trim()) return;
@@ -115,6 +94,49 @@ export default function ComposeModal({
       setSending(false);
     }
   };
+
+  // Focus on open
+  useEffect(() => {
+    if (isOpen && !minimized) {
+      setTimeout(() => toInputRef.current?.focus(), 100);
+    }
+  }, [isOpen, minimized]);
+
+  // Send shortcut: Cmd+Enter or Ctrl+Enter
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isOpen && !minimized && !sending) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          if (to.trim() && subject.trim()) {
+            e.preventDefault();
+            handleSend();
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, minimized, sending, to, subject, handleSend]);
+
+  // Calendar-aware detection
+  useEffect(() => {
+    if (forceCalendar) {
+      setShowCalendarPrompt(true);
+      return;
+    }
+    const lowerBody = body.toLowerCase();
+    const lowerSubject = subject.toLowerCase();
+    const textToCheck = `${lowerBody} ${lowerSubject}`;
+    const hasCalendarIntent = CALENDAR_KEYWORDS.some((kw) => textToCheck.includes(kw));
+    setShowCalendarPrompt(hasCalendarIntent && body.length > 10);
+  }, [body, subject, forceCalendar]);
+
+  // Reset on initial values change
+  useEffect(() => {
+    setTo(initialTo);
+    setSubject(initialSubject);
+    setBody(initialBody);
+  }, [initialTo, initialSubject, initialBody]);
 
   if (!isOpen) return null;
 

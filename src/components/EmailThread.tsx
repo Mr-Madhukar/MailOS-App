@@ -24,6 +24,7 @@ interface EmailThreadProps {
   onArchive: (id: string) => void;
   onStar: (id: string) => void;
   onSnooze: (id: string) => void;
+  onDelete?: (id: string) => void;
   onCompose: (replyTo?: { to: string; subject: string; body: string }) => void;
 }
 
@@ -34,6 +35,7 @@ export default function EmailThread({
   onArchive,
   onStar,
   onSnooze,
+  onDelete,
   onCompose,
 }: EmailThreadProps) {
   const [replyBody, setReplyBody] = useState("");
@@ -172,7 +174,7 @@ export default function EmailThread({
             label={email.labelIds?.includes("STARRED") ? "Unstar" : "Star"}
             onClick={() => onStar(email.id)}
           />
-          <ActionButton icon={Trash2} label="Delete" onClick={() => {}} danger />
+          <ActionButton icon={Trash2} label="Delete" onClick={() => onDelete?.(email.id)} danger />
         </div>
       </div>
 

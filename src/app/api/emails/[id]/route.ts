@@ -73,6 +73,10 @@ export async function GET(
       "No Subject";
     const dateHeader =
       headers.find((h: any) => h.name?.toLowerCase() === "date")?.value || "";
+    const toHeader =
+      headers.find((h: any) => h.name?.toLowerCase() === "to")?.value || "";
+    const ccHeader =
+      headers.find((h: any) => h.name?.toLowerCase() === "cc")?.value || "";
 
     // Extract body
     let body = "";
@@ -97,6 +101,8 @@ export async function GET(
         id: details.id,
         threadId: details.threadId,
         from: fromHeader,
+        to: toHeader,
+        cc: ccHeader,
         subject: subjectHeader,
         body,
         snippet: details.snippet || "",

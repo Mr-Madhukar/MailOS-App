@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Mail, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Mail, Search, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, X, Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Email, MailTab } from "@/hooks/useEmails";
 
@@ -11,6 +11,7 @@ interface EmailListProps {
   emails: Email[];
   selectedEmailId: string | null;
   onSelectEmail: (id: string) => void;
+  onSelectEvent?: (event: any) => void;
   activeTab: MailTab;
   onTabChange: (tab: MailTab) => void;
   loading: boolean;
@@ -43,6 +44,7 @@ export default function EmailList({
   emails,
   selectedEmailId,
   onSelectEmail,
+  onSelectEvent,
   activeTab,
   onTabChange,
   loading,
@@ -51,6 +53,79 @@ export default function EmailList({
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  const [query, setQuery] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchType, setSearchType] = useState<"advanced" | "semantic">("advanced");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
+  const [advancedParams, setAdvancedParams] = useState({
+    from: "",
+    subject: "",
+    priority: "all",
+    unread: "all",
+  });
+
+  const runSearchWithType = async (type: "advanced" | "semantic", currentQuery = query, params = advancedParams) => {
+    setIsSearching(true);
+    setSearchActive(true);
+    try {
+      if (type === "semantic") {
+        if (!currentQuery.trim()) {
+          setSearchResults([]);
+          setIsSearching(false);
+          return;
+        }
+        const res = await fetch(`/api/search/semantic?q=${encodeURIComponent(currentQuery)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.results || []);
+        }
+      } else {
+        const queryParams = new URLSearchParams();
+        if (params.from) queryParams.set("from", params.from);
+        if (params.subject) queryParams.set("subject", params.subject);
+        if (params.priority !== "all") queryParams.set("priority", params.priority);
+        if (params.unread !== "all") queryParams.set("unread", params.unread);
+        if (currentQuery) queryParams.set("snippet", currentQuery);
+
+        const res = await fetch(`/api/emails/search?${queryParams.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.emails || []);
+        }
+      }
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    runSearchWithType(searchType);
+  };
+
+  const handleClearSearch = () => {
+    setQuery("");
+    setSearchActive(false);
+    setSearchResults([]);
+    setAdvancedParams({
+      from: "",
+      subject: "",
+      priority: "all",
+      unread: "all",
+    });
+  };
+
+  const toggleSearchType = (type: "advanced" | "semantic") => {
+    setSearchType(type);
+    if (query.trim() || advancedParams.from || advancedParams.subject) {
+      runSearchWithType(type, query, advancedParams);
+    }
+  };
 
   // Reset to first page when emails or tab changes
   useEffect(() => {
@@ -105,80 +180,400 @@ export default function EmailList({
 
       {/* Search Bar */}
       <div className="px-6">
-        <div
-          className="rounded-lg border flex px-3 py-2 items-center gap-2 cursor-pointer transition-colors"
-          onClick={onCommandPaletteOpen}
-          style={{
-            background: "rgba(var(--bg-tertiary), 0.6)",
-            borderColor: "rgba(var(--border-primary))",
-          }}
-        >
-          <Search className="size-4" style={{ color: "rgb(var(--text-secondary))" }} />
-          <span className="text-sm leading-5 flex-1" style={{ color: "rgb(var(--text-secondary))" }}>
-            Search emails...
-          </span>
-          <kbd
-            className="rounded-md text-xs leading-4 border px-1.5 py-0.5"
+        <form onSubmit={handleSearchSubmit}>
+          <div
+            className="rounded-lg border flex px-3 py-1.5 items-center gap-2 transition-colors"
             style={{
-              background: "rgb(var(--kbd-bg))",
-              color: "rgb(var(--text-secondary))",
+              background: "rgba(var(--bg-tertiary), 0.6)",
               borderColor: "rgba(var(--border-primary))",
             }}
           >
-            ⌘K
-          </kbd>
-        </div>
-      </div>
+            <Search className="size-4 shrink-0" style={{ color: "rgb(var(--text-secondary))" }} />
+            <input
+              id="dashboard-search-input"
+              type="text"
+              placeholder={searchType === "semantic" ? "Semantic query (e.g. roadmap sync)..." : "Search emails..."}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="bg-transparent text-sm leading-5 flex-1 focus:outline-none py-0.5 border-none"
+              style={{ color: "rgb(var(--text-primary))" }}
+            />
+            {query.trim().length === 0 && !searchActive && (
+              <kbd
+                className="rounded-md text-[10px] leading-4 border px-1.5 py-0.5 shrink-0 select-none"
+                style={{
+                  background: "rgb(var(--kbd-bg))",
+                  color: "rgb(var(--text-secondary))",
+                  borderColor: "rgba(var(--border-primary))",
+                }}
+              >
+                /
+              </kbd>
+            )}
+            {searchType === "advanced" && (
+              <button
+                type="button"
+                onClick={() => setShowAdvancedPanel(!showAdvancedPanel)}
+                className="size-7 rounded-lg flex items-center justify-center transition-colors shrink-0"
+                style={{
+                  color: showAdvancedPanel ? "rgb(var(--accent-purple))" : "rgb(var(--text-secondary))",
+                  background: showAdvancedPanel ? "rgba(var(--accent-purple), 0.12)" : "transparent",
+                }}
+                title="Advanced Search Filters"
+              >
+                <SlidersHorizontal className="size-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => toggleSearchType(searchType === "advanced" ? "semantic" : "advanced")}
+              className="size-7 rounded-lg flex items-center justify-center transition-colors shrink-0"
+              style={{
+                color: searchType === "semantic" ? "rgb(var(--accent-purple))" : "rgb(var(--text-secondary))",
+                background: searchType === "semantic" ? "rgba(var(--accent-purple), 0.12)" : "transparent",
+              }}
+              title={searchType === "semantic" ? "Semantic Search (Local Vector DB)" : "Switch to Semantic Search"}
+            >
+              <Sparkles className="size-3.5" />
+            </button>
+            {(searchActive || query) && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="size-7 rounded-lg flex items-center justify-center transition-colors shrink-0"
+                style={{ color: "rgb(var(--text-secondary))" }}
+                title="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        </form>
 
-      {/* Tabs */}
-      <div
-        className="border-b flex px-4 pt-4 items-center gap-4 overflow-x-auto flex-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ borderColor: "rgba(var(--border-primary))" }}
-      >
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className="font-medium text-sm leading-5 -mb-px pb-3 transition-colors shrink-0"
+        {searchType === "advanced" && showAdvancedPanel && (
+          <form onSubmit={handleSearchSubmit} className="mt-2 p-3 rounded-lg border flex flex-col gap-2.5 animate-slide-up text-xs"
             style={{
-              color:
-                activeTab === tab.id
-                  ? "rgb(var(--text-primary))"
-                  : "rgb(var(--text-secondary))",
-              borderBottom:
-                activeTab === tab.id
-                  ? "2px solid rgb(var(--text-primary))"
-                  : "2px solid transparent",
+              background: "rgb(var(--bg-elevated))",
+              borderColor: "rgba(var(--border-primary))",
+              boxShadow: "var(--shadow-dropdown)",
             }}
           >
-            {tab.label}
-          </button>
-        ))}
+            <div className="flex gap-2 items-center justify-between">
+              <span className="font-semibold text-xs" style={{ color: "rgb(var(--text-primary))" }}>
+                Advanced Filters (Local DB)
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedPanel(false)}
+                className="size-5 rounded flex items-center justify-center"
+                style={{ color: "rgb(var(--text-secondary))" }}
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="font-medium" style={{ color: "rgb(var(--text-secondary))" }}>From</label>
+                <input
+                  type="text"
+                  placeholder="Sender name/email"
+                  value={advancedParams.from}
+                  onChange={(e) => setAdvancedParams({ ...advancedParams, from: e.target.value })}
+                  className="rounded border px-2 py-1 bg-transparent focus:outline-none"
+                  style={{
+                    borderColor: "rgba(var(--border-primary))",
+                    color: "rgb(var(--text-primary))",
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-medium" style={{ color: "rgb(var(--text-secondary))" }}>Subject</label>
+                <input
+                  type="text"
+                  placeholder="Subject contains"
+                  value={advancedParams.subject}
+                  onChange={(e) => setAdvancedParams({ ...advancedParams, subject: e.target.value })}
+                  className="rounded border px-2 py-1 bg-transparent focus:outline-none"
+                  style={{
+                    borderColor: "rgba(var(--border-primary))",
+                    color: "rgb(var(--text-primary))",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="font-medium" style={{ color: "rgb(var(--text-secondary))" }}>Priority</label>
+                <select
+                  value={advancedParams.priority}
+                  onChange={(e) => setAdvancedParams({ ...advancedParams, priority: e.target.value })}
+                  className="rounded border px-1.5 py-1 bg-transparent focus:outline-none"
+                  style={{
+                    borderColor: "rgba(var(--border-primary))",
+                    color: "rgb(var(--text-primary))",
+                    background: "rgb(var(--bg-secondary))"
+                  }}
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="high">High</option>
+                  <option value="med">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-medium" style={{ color: "rgb(var(--text-secondary))" }}>Read Status</label>
+                <select
+                  value={advancedParams.unread}
+                  onChange={(e) => setAdvancedParams({ ...advancedParams, unread: e.target.value })}
+                  className="rounded border px-1.5 py-1 bg-transparent focus:outline-none"
+                  style={{
+                    borderColor: "rgba(var(--border-primary))",
+                    color: "rgb(var(--text-primary))",
+                    background: "rgb(var(--bg-secondary))"
+                  }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="true">Unread Only</option>
+                  <option value="false">Read Only</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full mt-1 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+              style={{
+                background: "rgb(var(--btn-primary-bg))",
+                color: "rgb(var(--btn-primary-text))",
+              }}
+            >
+              Search
+            </button>
+          </form>
+        )}
       </div>
+
+      {/* Tabs / Search Header */}
+      {searchActive ? (
+        <div
+          className="border-b flex px-6 py-3 items-center justify-between shrink-0"
+          style={{ borderColor: "rgba(var(--border-primary))" }}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "rgb(var(--accent-purple))" }}>
+            {searchType === "semantic" ? "Semantic Matches (Local Vector DB)" : "Advanced Local Search Results"}
+          </span>
+          <button
+            onClick={handleClearSearch}
+            className="text-[10px] font-semibold flex items-center gap-1 hover:underline cursor-pointer border-none bg-transparent"
+            style={{ color: "rgb(var(--text-secondary))" }}
+          >
+            <X className="size-3" />
+            Clear
+          </button>
+        </div>
+      ) : (
+        <div
+          className="border-b flex px-4 pt-4 items-center gap-4 overflow-x-auto flex-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ borderColor: "rgba(var(--border-primary))" }}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className="font-medium text-sm leading-5 -mb-px pb-3 transition-colors shrink-0"
+              style={{
+                color:
+                  activeTab === tab.id
+                    ? "rgb(var(--text-primary))"
+                    : "rgb(var(--text-secondary))",
+                borderBottom:
+                  activeTab === tab.id
+                    ? "2px solid rgb(var(--text-primary))"
+                    : "2px solid transparent",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Email List */}
       <div ref={listRef} className="overflow-y-auto flex-1">
-        {loading ? (
+        {loading || isSearching ? (
           // Skeleton loading
           <div className="flex flex-col">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="border-b flex px-6 py-3 items-start gap-3"
+                className="border-b flex px-6 py-3 items-start gap-3 animate-pulse"
                 style={{ borderColor: "rgba(var(--border-primary))" }}
               >
-                <div className="size-9 rounded-full skeleton shrink-0" />
+                <div className="size-9 rounded-full shrink-0 bg-neutral-200 dark:bg-neutral-800" />
                 <div className="flex-1 space-y-2">
                   <div className="flex justify-between">
-                    <div className="h-4 w-32 skeleton" />
-                    <div className="h-3 w-12 skeleton" />
+                    <div className="h-4 w-32 rounded bg-neutral-200 dark:bg-neutral-800" />
+                    <div className="h-3 w-12 rounded bg-neutral-200 dark:bg-neutral-800" />
                   </div>
-                  <div className="h-4 w-48 skeleton" />
-                  <div className="h-3 w-64 skeleton" />
+                  <div className="h-4 w-48 rounded bg-neutral-200 dark:bg-neutral-800" />
+                  <div className="h-3 w-64 rounded bg-neutral-200 dark:bg-neutral-800" />
                 </div>
               </div>
             ))}
           </div>
+        ) : searchActive ? (
+          searchResults.length === 0 ? (
+            <div className="h-full flex flex-col justify-center items-center text-center p-6">
+              <Mail className="size-8 mb-2" style={{ color: "rgba(var(--text-secondary), 0.3)" }} />
+              <p className="text-sm font-medium" style={{ color: "rgb(var(--text-primary))" }}>
+                No search results found
+              </p>
+              <p className="text-xs max-w-[220px] mt-1" style={{ color: "rgb(var(--text-secondary))" }}>
+                Try adjusting your search query or advanced filters.
+              </p>
+            </div>
+          ) : (
+            searchResults.map((result: any) => {
+              if (result.type === "event") {
+                return (
+                  <div
+                    key={result.id}
+                    onClick={() => onSelectEvent?.(result)}
+                    className="border-b flex px-6 py-3 items-start gap-3 cursor-pointer transition-all hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                    style={{ borderColor: "rgba(var(--border-primary))" }}
+                  >
+                    <div className="size-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(var(--accent-purple), 0.12)", color: "rgb(var(--accent-purple))" }}>
+                      <Calendar className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex justify-between items-center gap-2">
+                        <p className="truncate text-sm font-semibold" style={{ color: "rgb(var(--text-primary))" }}>
+                          {result.summary}
+                        </p>
+                        <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(var(--accent-purple), 0.1)", color: "rgb(var(--accent-purple))" }}>
+                          Event
+                        </span>
+                      </div>
+                      <p className="truncate text-xs leading-4 mt-0.5" style={{ color: "rgb(var(--text-secondary))" }}>
+                        {result.timeRaw} • {result.details}
+                      </p>
+                      {result.similarity !== undefined && (
+                        <div className="inline-block mt-1 text-[10px] font-semibold text-neutral-500">
+                          Relevance: {Math.round(result.similarity * 100)}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              } else {
+                const isSelected = selectedEmailId === result.id;
+                const senderName = cleanSenderName(result.from);
+                const initial = getInitial(result.from);
+
+                return (
+                  <div
+                    key={result.id}
+                    onClick={() => onSelectEmail(result.id)}
+                    className="border-b flex px-6 py-3 items-start gap-3 cursor-pointer transition-all hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                    style={{
+                      borderColor: "rgba(var(--border-primary))",
+                      background: isSelected
+                        ? "rgba(var(--bg-tertiary), 0.6)"
+                        : "transparent",
+                    }}
+                  >
+                    <Avatar className="size-9 shrink-0">
+                      <AvatarFallback
+                        className="font-semibold text-xs leading-4"
+                        style={{
+                          background:
+                            result.priority === "high"
+                              ? "rgba(var(--accent-red), 0.15)"
+                              : result.priority === "med"
+                              ? "rgba(var(--accent-orange), 0.15)"
+                              : "rgb(var(--bg-tertiary))",
+                          color:
+                            result.priority === "high"
+                              ? "rgb(var(--accent-red))"
+                              : result.priority === "med"
+                              ? "rgb(var(--accent-orange))"
+                              : "rgb(var(--text-secondary))",
+                        }}
+                      >
+                        {initial}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex justify-between items-center gap-2">
+                        <p
+                          className={`truncate text-sm leading-5 ${result.unread ? "font-semibold" : "font-medium"}`}
+                          style={{
+                            color: result.unread
+                              ? "rgb(var(--text-primary))"
+                              : "rgba(var(--text-primary), 0.85)",
+                          }}
+                        >
+                          {senderName}
+                        </p>
+                        <span
+                          className="shrink-0 text-xs leading-4"
+                          style={{ color: "rgb(var(--text-secondary))" }}
+                        >
+                          {result.date}
+                        </span>
+                      </div>
+                      <div className="flex mt-0.5 justify-between items-center gap-2">
+                        <p
+                          className={`truncate text-sm leading-5 ${result.unread ? "font-semibold" : ""}`}
+                          style={{
+                            color: result.unread
+                              ? "rgb(var(--text-primary))"
+                              : "rgba(var(--text-primary), 0.75)",
+                          }}
+                        >
+                          {result.subject}
+                        </p>
+                        {result.priority && (
+                          <span
+                            className="shrink-0 font-medium rounded-full text-[10px] leading-3 px-2 py-0.5"
+                            style={{
+                              background:
+                                result.priority === "high"
+                                  ? "rgba(var(--accent-red), 0.12)"
+                                  : result.priority === "med"
+                                  ? "rgba(var(--accent-orange), 0.12)"
+                                  : "rgb(var(--bg-tertiary))",
+                              color:
+                                result.priority === "high"
+                                  ? "rgb(var(--accent-red))"
+                                  : result.priority === "med"
+                                  ? "rgb(var(--accent-orange))"
+                                  : "rgb(var(--text-secondary))",
+                            }}
+                          >
+                            {result.priority}
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className="truncate text-xs leading-4 mt-0.5"
+                        style={{ color: "rgb(var(--text-secondary))" }}
+                      >
+                        {result.snippet}
+                      </p>
+                      {result.similarity !== undefined && (
+                        <div className="inline-block mt-1 text-[10px] font-semibold text-neutral-500">
+                          Relevance: {Math.round(result.similarity * 100)}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            })
+          )
         ) : emails.length === 0 ? (
           <div className="h-full flex flex-col justify-center items-center text-center p-6">
             <Mail className="size-8 mb-2" style={{ color: "rgba(var(--text-secondary), 0.3)" }} />
@@ -305,7 +700,7 @@ export default function EmailList({
       </div>
 
       {/* Pagination Bar */}
-      {!loading && emails.length > 0 && (
+      {!loading && !searchActive && emails.length > 0 && (
         <div
           className="border-t flex px-6 py-2.5 items-center justify-between"
           style={{

@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { signJwt, verifyJwt } from "@/lib/jwt";
 import { cookies } from "next/headers";
 import crypto from "crypto";
+import { registerCalendarWatch, registerGmailWatch } from "@/lib/watch";
 
 export async function GET(req: Request) {
   try {
@@ -189,6 +190,10 @@ export async function GET(req: Request) {
         const expiresAt = (Math.floor(Date.now() / 1000) + tokens.expires_in).toString();
         await userCorsair.gmail.keys.set_expires_at(expiresAt);
       }
+      // Register Gmail push notifications (optional Pub/Sub topic)
+      registerGmailWatch(tokens.access_token).catch(err => {
+        console.error("Failed to register Gmail watch:", err);
+      });
     } else {
       await userCorsair.googlecalendar.keys.set_access_token(tokens.access_token);
       if (tokens.refresh_token) {
@@ -198,6 +203,10 @@ export async function GET(req: Request) {
         const expiresAt = (Math.floor(Date.now() / 1000) + tokens.expires_in).toString();
         await userCorsair.googlecalendar.keys.set_expires_at(expiresAt);
       }
+      // Register Calendar webhook watch channel
+      registerCalendarWatch(userId, tokens.access_token).catch(err => {
+        console.error("Failed to register Calendar watch:", err);
+      });
     }
 
     // Redirect to dashboard page

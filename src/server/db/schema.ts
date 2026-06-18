@@ -1,4 +1,4 @@
-import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, jsonb, timestamp, vector } from 'drizzle-orm/pg-core';
 
 export const corsairIntegrations = pgTable('corsair_integrations', {
     id: text('id').primaryKey(),
@@ -28,6 +28,7 @@ export const corsairEntities = pgTable('corsair_entities', {
     entityType: text('entity_type').notNull(),
     version: text('version').notNull(),
     data: jsonb('data').notNull().default({}),
+    embedding: vector('embedding', { dimensions: 1536 }),
 });
 
 export const corsairEvents = pgTable('corsair_events', {

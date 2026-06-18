@@ -1,9 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { corsair, getFreshGmailAccessToken } from "@/server/corsair";
+import { corsair, db, getFreshGmailAccessToken } from "@/server/corsair";
+import { corsairEntities } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { verifyJwt } from "@/lib/jwt";
+import { classifyEmailPriority } from "@/lib/priority";
+import { getEmbedding } from "@/lib/embeddings";
 
 // Premium Mockup Emails for Demo/Fallback Mode
 const MOCK_EMAILS = [
@@ -304,109 +308,73 @@ export async function GET() {
       });
     }
 
-    // Gmail is connected, fetch live messages directly from Gmail REST API (limit to 100)
-    const listRes = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
-
-    if (!listRes.ok) {
-      throw new Error(`Gmail API list failed: ${listRes.status} ${listRes.statusText}`);
+    // Gmail is connected, check cache in local DB
+    let cachedEntities: any[] = [];
+    try {
+      cachedEntities = await userCorsair.gmail.db.messages.list({ limit: 100 });
+    } catch (dbErr) {
+      console.error("Failed to list cached messages:", dbErr);
     }
 
-    const listData = await listRes.json();
-    const messages = listData.messages || [];
-
-    if (messages.length === 0) {
-      return NextResponse.json({
-        demo: false,
-        emails: [],
+    // If cache is empty, trigger a synchronous initial sync so the user doesn't see a blank page
+    if (cachedEntities.length === 0) {
+      console.log(`[GET /api/emails] Cache empty. Performing initial sync for user ${userId}...`);
+      await syncEmailsToCache(userId, accessToken);
+      try {
+        cachedEntities = await userCorsair.gmail.db.messages.list({ limit: 100 });
+      } catch {}
+    } else {
+      // Trigger background sync to keep it updated without blocking the response
+      console.log(`[GET /api/emails] Cache hit (count: ${cachedEntities.length}). Triggering background sync...`);
+      syncEmailsToCache(userId, accessToken).catch((syncErr) => {
+        console.error("Background email sync failed:", syncErr);
       });
     }
 
-    // Fetch details for each message with concurrency limit of 15 using direct fetch (avoids Corsair DB writes)
-    const detailedEmails = await limitConcurrency(messages, 15, async (msg: any) => {
-      try {
-        const detailRes = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
+    // Map cached entities to UI schema
+    const formattedEmails = cachedEntities.map((item: any) => {
+      const details = item.data;
+      const headers = details.payload?.headers || [];
+      const fromHeader = headers.find((h: any) => h.name?.toLowerCase() === "from")?.value || "Unknown";
+      const subjectHeader = headers.find((h: any) => h.name?.toLowerCase() === "subject")?.value || "No Subject";
+      const dateHeader = headers.find((h: any) => h.name?.toLowerCase() === "date")?.value || "";
+
+      // Format Date to relative
+      let displayDate = "Just now";
+      if (dateHeader) {
+        try {
+          const dateObj = new Date(dateHeader);
+          const diffMs = Date.now() - dateObj.getTime();
+          const diffMins = Math.floor(diffMs / 60000);
+          const diffHours = Math.floor(diffMins / 60);
+
+          if (diffMins < 60) {
+            displayDate = diffMins <= 0 ? "Just now" : `${diffMins}m ago`;
+          } else if (diffHours < 24) {
+            displayDate = `${diffHours}h ago`;
+          } else {
+            displayDate = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
           }
-        );
-
-        if (!detailRes.ok) {
-          throw new Error(`Failed to fetch message ${msg.id}: ${detailRes.status} ${detailRes.statusText}`);
+        } catch {
+          displayDate = dateHeader;
         }
-
-        const details = await detailRes.json();
-        const headers = details.payload?.headers || [];
-        const fromHeader = headers.find((h: any) => h.name?.toLowerCase() === "from")?.value || "Unknown";
-        const subjectHeader = headers.find((h: any) => h.name?.toLowerCase() === "subject")?.value || "No Subject";
-        const dateHeader = headers.find((h: any) => h.name?.toLowerCase() === "date")?.value || "";
-
-        // Simple basic priority classifier (heuristic) for Day 1
-        let priority = "low";
-        const textToAnalyze = `${fromHeader} ${subjectHeader}`.toLowerCase();
-        if (textToAnalyze.includes("urgent") || textToAnalyze.includes("action required") || textToAnalyze.includes("important")) {
-          priority = "high";
-        } else if (textToAnalyze.includes("review") || textToAnalyze.includes("roadmap") || textToAnalyze.includes("meeting")) {
-          priority = "med";
-        }
-
-        // Format Date to a relative or readable format
-        let displayDate = "Just now";
-        if (dateHeader) {
-          try {
-            const dateObj = new Date(dateHeader);
-            const diffMs = Date.now() - dateObj.getTime();
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMins / 60);
-
-            if (diffMins < 60) {
-              displayDate = diffMins <= 0 ? "Just now" : `${diffMins}m ago`;
-            } else if (diffHours < 24) {
-              displayDate = `${diffHours}h ago`;
-            } else {
-              displayDate = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-            }
-          } catch {
-            displayDate = dateHeader;
-          }
-        }
-
-        return {
-          id: msg.id,
-          from: fromHeader,
-          subject: subjectHeader,
-          snippet: details.snippet || "",
-          date: displayDate,
-          priority,
-          unread: details.labelIds?.includes("UNREAD") || false,
-          labelIds: details.labelIds || [],
-        };
-      } catch (e) {
-        return {
-          id: msg.id,
-          from: "Unknown",
-          subject: "Error loading message details",
-          snippet: "",
-          date: "",
-          priority: "low",
-          unread: false,
-          labelIds: [],
-        };
       }
+
+      return {
+        id: item.entityId,
+        from: fromHeader,
+        subject: subjectHeader,
+        snippet: details.snippet || "",
+        date: displayDate,
+        priority: details.priority || "low",
+        unread: details.labelIds?.includes("UNREAD") || false,
+        labelIds: details.labelIds || [],
+      };
     });
 
     return NextResponse.json({
       demo: false,
-      emails: detailedEmails,
+      emails: formattedEmails,
     });
   } catch (error: any) {
     console.error("Fetch Emails API Error:", error);
@@ -416,6 +384,61 @@ export async function GET() {
       emails: MOCK_EMAILS,
       error: error.message,
     });
+  }
+}
+
+// Sync helper function
+async function syncEmailsToCache(userId: string, accessToken: string) {
+  const userCorsair = corsair.withTenant(userId);
+  try {
+    const listRes = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100",
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!listRes.ok) return;
+    const listData = await listRes.json();
+    const messages = listData.messages || [];
+
+    await limitConcurrency(messages, 15, async (msg: any) => {
+      try {
+        const cached = await userCorsair.gmail.db.messages.findByEntityId(msg.id);
+        if (cached && (cached.data as any).priority && (cached as any).embedding) {
+          return;
+        }
+
+        const detailRes = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!detailRes.ok) return;
+        const details = await detailRes.json();
+
+        const headers = details.payload?.headers || [];
+        const fromHeader = headers.find((h: any) => h.name?.toLowerCase() === "from")?.value || "Unknown";
+        const subjectHeader = headers.find((h: any) => h.name?.toLowerCase() === "subject")?.value || "No Subject";
+        const snippet = details.snippet || "";
+
+        const [priority, embedding] = await Promise.all([
+          classifyEmailPriority(fromHeader, subjectHeader, snippet),
+          getEmbedding(`From: ${fromHeader}\nSubject: ${subjectHeader}\nSnippet: ${snippet}`),
+        ]);
+
+        const gmailData = {
+          ...details,
+          priority,
+        };
+
+        const upserted = await userCorsair.gmail.db.messages.upsertByEntityId(msg.id, gmailData);
+        
+        await db.update(corsairEntities)
+          .set({ embedding, updatedAt: new Date() })
+          .where(eq(corsairEntities.id, upserted.id));
+      } catch (err) {
+        console.error(`Error syncing message ${msg.id}:`, err);
+      }
+    });
+  } catch (error) {
+    console.error("Error in syncEmailsToCache:", error);
   }
 }
 

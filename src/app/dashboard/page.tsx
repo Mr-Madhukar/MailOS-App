@@ -77,6 +77,7 @@ function MailOSApp() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [composeInitial, setComposeInitial] = useState({ to: "", subject: "", body: "" });
+  const [composeForceCalendar, setComposeForceCalendar] = useState(false);
   const [showEmailThread, setShowEmailThread] = useState(false);
   const [listWidth, setListWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
@@ -209,8 +210,9 @@ function MailOSApp() {
 
   // ── Compose handlers ──
   const openCompose = useCallback(
-    (initial?: { to: string; subject: string; body: string }) => {
+    (initial?: { to: string; subject: string; body: string }, forceCalendar = false) => {
       setComposeInitial(initial || { to: "", subject: "", body: "" });
+      setComposeForceCalendar(forceCalendar);
       setIsComposeOpen(true);
     },
     []
@@ -267,11 +269,49 @@ function MailOSApp() {
     [emailHook.emails, openCompose]
   );
 
+  const handleReplyAll = useCallback(
+    async (id: string) => {
+      const email = emailHook.emails.find((e) => e.id === id);
+      if (email) {
+        const recList = new Set<string>();
+        if (email.from) recList.add(email.from);
+        if (email.to) {
+          email.to.split(",").forEach((emailAddr) => {
+            const trimmed = emailAddr.trim();
+            if (trimmed) recList.add(trimmed);
+          });
+        }
+        if (email.cc) {
+          email.cc.split(",").forEach((emailAddr) => {
+            const trimmed = emailAddr.trim();
+            if (trimmed) recList.add(trimmed);
+          });
+        }
+        const toList = Array.from(recList).join(", ");
+
+        openCompose({
+          to: toList,
+          subject: `Re: ${email.subject}`,
+          body: `\n\n---\nOn ${email.date}, ${email.from} wrote:\n> ${email.snippet}`,
+        });
+      }
+    },
+    [emailHook.emails, openCompose]
+  );
+
   const handleSnooze = useCallback(
     (id: string) => {
       addToast({ message: "Snoozed until tomorrow morning", type: "info" });
     },
     [addToast]
+  );
+
+  const handleDeleteEmail = useCallback(
+    async (id: string) => {
+      await emailHook.deleteEmail(id);
+      addToast({ message: "Email moved to trash", type: "success" });
+    },
+    [emailHook, addToast]
   );
 
   // ── Select email and show thread ──
@@ -282,6 +322,18 @@ function MailOSApp() {
       setShowEmailThread(true);
     },
     [emailHook]
+  );
+
+  const handleSelectEvent = useCallback(
+    (event: any) => {
+      if (event.startDateTime) {
+        calendarHook.handleSelectDate(new Date(event.startDateTime));
+        addToast({ message: `Focused calendar date for: ${event.summary}`, type: "info" });
+      } else {
+        addToast({ message: `Event: ${event.summary} (${event.timeRaw})`, type: "info" });
+      }
+    },
+    [calendarHook, addToast]
   );
 
   // ── Command Palette commands ──
@@ -496,6 +548,53 @@ function MailOSApp() {
       },
     },
     {
+      key: "g",
+      handler: () => {
+        if (emailHook.selectedEmailId) handleReplyAll(emailHook.selectedEmailId);
+      },
+    },
+    {
+      key: "#",
+      handler: () => {
+        if (emailHook.selectedEmailId) handleDeleteEmail(emailHook.selectedEmailId);
+      },
+    },
+    {
+      key: "n",
+      handler: () => openCompose(undefined, true),
+    },
+    {
+      key: "/",
+      handler: (e?: any) => {
+        const searchInput = document.getElementById("dashboard-search-input");
+        if (searchInput) {
+          e?.preventDefault();
+          searchInput.focus();
+        }
+      },
+      global: true,
+    },
+    {
+      key: "a",
+      handler: (e?: any) => {
+        const aiInput = document.querySelector('#ai-chat-form textarea') as HTMLTextAreaElement;
+        if (aiInput) {
+          e?.preventDefault();
+          aiInput.focus();
+        }
+      },
+      global: true,
+    },
+    {
+      key: "l",
+      handler: () => {
+        if (emailHook.selectedEmailId) {
+          handleStar(emailHook.selectedEmailId);
+          addToast({ message: "Label Star toggled", type: "success" });
+        }
+      },
+    },
+    {
       key: "e",
       handler: () => {
         if (emailHook.selectedEmailId) handleArchive(emailHook.selectedEmailId);
@@ -622,6 +721,7 @@ function MailOSApp() {
               emails={emailHook.filteredEmails}
               selectedEmailId={emailHook.selectedEmailId}
               onSelectEmail={handleSelectEmail}
+              onSelectEvent={handleSelectEvent}
               activeTab={emailHook.activeTab}
               onTabChange={emailHook.setActiveTab}
               loading={emailHook.loading}
@@ -650,6 +750,7 @@ function MailOSApp() {
                 onArchive={handleArchive}
                 onStar={handleStar}
                 onSnooze={handleSnooze}
+                onDelete={handleDeleteEmail}
                 onCompose={openCompose}
               />
             </div>
@@ -674,12 +775,16 @@ function MailOSApp() {
       {/* Modals */}
       <ComposeModal
         isOpen={isComposeOpen}
-        onClose={() => setIsComposeOpen(false)}
+        onClose={() => {
+          setIsComposeOpen(false);
+          setComposeForceCalendar(false);
+        }}
         onSend={handleSendEmail}
         onCreateEvent={calendarHook.createEvent}
         initialTo={composeInitial.to}
         initialSubject={composeInitial.subject}
         initialBody={composeInitial.body}
+        forceCalendar={composeForceCalendar}
       />
 
       <CommandPalette
