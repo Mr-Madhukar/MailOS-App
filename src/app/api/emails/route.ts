@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsair } from "@/server/corsair";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 // Premium Mockup Emails for Demo/Fallback Mode
 const MOCK_EMAILS = [
@@ -245,16 +247,54 @@ const MOCK_EMAILS = [
   },
 ];
 
+async function limitConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  const promises: Promise<void>[] = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const currentIndex = index++;
+      const item = items[currentIndex];
+      results[currentIndex] = await fn(item);
+    }
+  }
+
+  for (let i = 0; i < Math.min(limit, items.length); i++) {
+    promises.push(worker());
+  }
+
+  await Promise.all(promises);
+  return results;
+}
+
 export async function GET() {
   try {
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     // Check if Gmail is connected by looking up the access token
     let isConnected = false;
+    let accessToken: string | null = null;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
-    if (!isConnected) {
+    if (!isConnected || !accessToken) {
       // Return demo emails if not connected
       return NextResponse.json({
         demo: true,
@@ -262,9 +302,22 @@ export async function GET() {
       });
     }
 
-    // Gmail is connected, fetch live messages
-    const listResult = await corsair.gmail.api.messages.list({ maxResults: 50 });
-    const messages = listResult.messages || [];
+    // Gmail is connected, fetch live messages directly from Gmail REST API (limit to 100)
+    const listRes = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!listRes.ok) {
+      throw new Error(`Gmail API list failed: ${listRes.status} ${listRes.statusText}`);
+    }
+
+    const listData = await listRes.json();
+    const messages = listData.messages || [];
 
     if (messages.length === 0) {
       return NextResponse.json({
@@ -273,73 +326,81 @@ export async function GET() {
       });
     }
 
-    // Fetch details for each message
-    const detailedEmails = await Promise.all(
-      messages.map(async (msg) => {
-        try {
-          const details = await corsair.gmail.api.messages.get({
-            id: msg.id!,
-            format: "full",
-          });
-
-          const headers = details.payload?.headers || [];
-          const fromHeader = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "Unknown";
-          const subjectHeader = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "No Subject";
-          const dateHeader = headers.find((h) => h.name?.toLowerCase() === "date")?.value || "";
-
-          // Simple basic priority classifier (heuristic) for Day 1
-          let priority = "low";
-          const textToAnalyze = `${fromHeader} ${subjectHeader}`.toLowerCase();
-          if (textToAnalyze.includes("urgent") || textToAnalyze.includes("action required") || textToAnalyze.includes("important")) {
-            priority = "high";
-          } else if (textToAnalyze.includes("review") || textToAnalyze.includes("roadmap") || textToAnalyze.includes("meeting")) {
-            priority = "med";
+    // Fetch details for each message with concurrency limit of 15 using direct fetch (avoids Corsair DB writes)
+    const detailedEmails = await limitConcurrency(messages, 15, async (msg: any) => {
+      try {
+        const detailRes = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
           }
+        );
 
-          // Format Date to a relative or readable format
-          let displayDate = "Just now";
-          if (dateHeader) {
-            try {
-              const dateObj = new Date(dateHeader);
-              const diffMs = Date.now() - dateObj.getTime();
-              const diffMins = Math.floor(diffMs / 60000);
-              const diffHours = Math.floor(diffMins / 60);
-
-              if (diffMins < 60) {
-                displayDate = diffMins <= 0 ? "Just now" : `${diffMins}m ago`;
-              } else if (diffHours < 24) {
-                displayDate = `${diffHours}h ago`;
-              } else {
-                displayDate = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-              }
-            } catch {
-              displayDate = dateHeader;
-            }
-          }
-
-          return {
-            id: msg.id,
-            from: fromHeader,
-            subject: subjectHeader,
-            snippet: details.snippet || "",
-            date: displayDate,
-            priority,
-            unread: details.labelIds?.includes("UNREAD") || false,
-            labelIds: details.labelIds || [],
-          };
-        } catch (e) {
-          return {
-            id: msg.id,
-            from: "Unknown",
-            subject: "Error loading message details",
-            snippet: "",
-            date: "",
-            priority: "low",
-            unread: false,
-          };
+        if (!detailRes.ok) {
+          throw new Error(`Failed to fetch message ${msg.id}: ${detailRes.status} ${detailRes.statusText}`);
         }
-      })
-    );
+
+        const details = await detailRes.json();
+        const headers = details.payload?.headers || [];
+        const fromHeader = headers.find((h: any) => h.name?.toLowerCase() === "from")?.value || "Unknown";
+        const subjectHeader = headers.find((h: any) => h.name?.toLowerCase() === "subject")?.value || "No Subject";
+        const dateHeader = headers.find((h: any) => h.name?.toLowerCase() === "date")?.value || "";
+
+        // Simple basic priority classifier (heuristic) for Day 1
+        let priority = "low";
+        const textToAnalyze = `${fromHeader} ${subjectHeader}`.toLowerCase();
+        if (textToAnalyze.includes("urgent") || textToAnalyze.includes("action required") || textToAnalyze.includes("important")) {
+          priority = "high";
+        } else if (textToAnalyze.includes("review") || textToAnalyze.includes("roadmap") || textToAnalyze.includes("meeting")) {
+          priority = "med";
+        }
+
+        // Format Date to a relative or readable format
+        let displayDate = "Just now";
+        if (dateHeader) {
+          try {
+            const dateObj = new Date(dateHeader);
+            const diffMs = Date.now() - dateObj.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+
+            if (diffMins < 60) {
+              displayDate = diffMins <= 0 ? "Just now" : `${diffMins}m ago`;
+            } else if (diffHours < 24) {
+              displayDate = `${diffHours}h ago`;
+            } else {
+              displayDate = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            }
+          } catch {
+            displayDate = dateHeader;
+          }
+        }
+
+        return {
+          id: msg.id,
+          from: fromHeader,
+          subject: subjectHeader,
+          snippet: details.snippet || "",
+          date: displayDate,
+          priority,
+          unread: details.labelIds?.includes("UNREAD") || false,
+          labelIds: details.labelIds || [],
+        };
+      } catch (e) {
+        return {
+          id: msg.id,
+          from: "Unknown",
+          subject: "Error loading message details",
+          snippet: "",
+          date: "",
+          priority: "low",
+          unread: false,
+          labelIds: [],
+        };
+      }
+    });
 
     return NextResponse.json({
       demo: false,
@@ -359,6 +420,18 @@ export async function GET() {
 // POST /api/emails — Send a new email
 export async function POST(req: Request) {
   try {
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     const { to, subject, body } = await req.json();
 
     if (!to || !subject) {
@@ -370,7 +443,7 @@ export async function POST(req: Request) {
 
     let isConnected = false;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      const accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -394,7 +467,7 @@ export async function POST(req: Request) {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    await corsair.gmail.api.messages.send({
+    await userCorsair.gmail.api.messages.send({
       raw: encodedMessage,
     });
 

@@ -39,3 +39,12 @@ export const corsairEvents = pgTable('corsair_events', {
     payload: jsonb('payload').notNull().default({}),
     status: text('status'),
 });
+
+export const users = pgTable('users', {
+    id: text('id').primaryKey(),
+    email: text('email').unique().notNull(),
+    passwordHash: text('password_hash').notNull(),
+    name: text('name'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

@@ -3,6 +3,8 @@ import { corsair } from "@/server/corsair";
 import { gmail } from "@corsair-dev/gmail";
 import { googlecalendar } from "@corsair-dev/googlecalendar";
 import { ensureIntegrationAndAccount } from "@/server/db/ensure";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 export async function GET(req: Request) {
   try {
@@ -13,7 +15,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid or missing plugin ID" }, { status: 400 });
     }
 
-    await ensureIntegrationAndAccount(pluginId);
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    await ensureIntegrationAndAccount(pluginId, userId);
 
     let clientId: string | null = null;
     let redirectUrl: string | null = null;

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsair } from "@/server/corsair";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 // POST /api/emails/:id/reply — Reply to an email
 export async function POST(
@@ -17,9 +19,21 @@ export async function POST(
       );
     }
 
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     let isConnected = false;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      const accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -27,11 +41,10 @@ export async function POST(
       return NextResponse.json({ demo: true, success: true });
     }
 
-    // Get original message details for reply headers
-    const original = await corsair.gmail.api.messages.get({
+    // Get original message details for reply headers (omit metadataHeaders to avoid comma-joining bug)
+    const original = await userCorsair.gmail.api.messages.get({
       id,
       format: "metadata",
-      metadataHeaders: ["From", "Subject", "Message-ID", "References", "In-Reply-To"],
     });
 
     const headers = original.payload?.headers || [];
@@ -59,7 +72,7 @@ export async function POST(
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    await corsair.gmail.api.messages.send({
+    await userCorsair.gmail.api.messages.send({
       raw: encodedMessage,
       threadId: original.threadId,
     });

@@ -289,6 +289,25 @@ export default function HomePage() {
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Check authentication status
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          setIsAuthenticated(!!data.user);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch {
+        setIsAuthenticated(false);
+      }
+    }
+    checkAuth();
+  }, []);
 
   // Track scroll for navbar style
   useEffect(() => {
@@ -374,29 +393,45 @@ export default function HomePage() {
                 )}
               </button>
 
-              {/* Sign In - Desktop */}
-              <Link
-                href="/"
-                className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-lg hp-btn-ghost"
-                style={{
-                  color: "rgb(var(--text-secondary))",
-                  border: "0.5px solid rgba(var(--border-primary))",
-                }}
-              >
-                Sign in
-              </Link>
-
-              {/* Get Started - Desktop */}
-              <Link
-                href="/"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg hp-btn-primary"
-                style={{
-                  background: "rgb(var(--accent-purple))",
-                  color: "#fff",
-                }}
-              >
-                Get started free
-              </Link>
+              {/* Sign In / Dashboard - Desktop */}
+              {isAuthenticated !== null && (
+                isAuthenticated ? (
+                  <Link
+                    href="/dashboard"
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg hp-btn-primary animate-fade-in"
+                    style={{
+                      background: "rgb(var(--accent-purple))",
+                      color: "#fff",
+                    }}
+                  >
+                    Go to Dashboard
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-lg hp-btn-ghost animate-fade-in"
+                      style={{
+                        color: "rgb(var(--text-secondary))",
+                        border: "0.5px solid rgba(var(--border-primary))",
+                      }}
+                    >
+                      Sign in
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg hp-btn-primary animate-fade-in"
+                      style={{
+                        background: "rgb(var(--accent-purple))",
+                        color: "#fff",
+                      }}
+                    >
+                      Get started free
+                    </Link>
+                  </>
+                )
+              )}
 
               {/* Mobile Menu Button */}
               <button
@@ -442,23 +477,37 @@ export default function HomePage() {
               className="mt-2 pt-2 flex flex-col gap-2"
               style={{ borderTop: "0.5px solid rgba(var(--border-primary))" }}
             >
-              <Link
-                href="/"
-                className="block px-3 py-2 text-sm rounded-lg text-center"
-                style={{
-                  color: "rgb(var(--text-secondary))",
-                  border: "0.5px solid rgba(var(--border-primary))",
-                }}
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/"
-                className="block px-3 py-2 text-sm font-medium rounded-lg text-center"
-                style={{ background: "rgb(var(--accent-purple))", color: "#fff" }}
-              >
-                Get started free
-              </Link>
+              {isAuthenticated !== null && (
+                isAuthenticated ? (
+                  <Link
+                    href="/dashboard"
+                    className="block px-3 py-2 text-sm font-medium rounded-lg text-center"
+                    style={{ background: "rgb(var(--accent-purple))", color: "#fff" }}
+                  >
+                    Go to Dashboard
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className="block px-3 py-2 text-sm rounded-lg text-center"
+                      style={{
+                        color: "rgb(var(--text-secondary))",
+                        border: "0.5px solid rgba(var(--border-primary))",
+                      }}
+                    >
+                      Sign in
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="block px-3 py-2 text-sm font-medium rounded-lg text-center"
+                      style={{ background: "rgb(var(--accent-purple))", color: "#fff" }}
+                    >
+                      Get started free
+                    </Link>
+                  </>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -510,17 +559,33 @@ export default function HomePage() {
 
           {/* Buttons */}
           <div className="flex items-center justify-center gap-3 mb-5">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
-              style={{
-                background: "rgb(var(--accent-purple))",
-                color: "#fff",
-              }}
-            >
-              <Zap className="w-4 h-4" />
-              Start for free
-            </Link>
+            {isAuthenticated !== null && (
+              isAuthenticated ? (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
+                  style={{
+                    background: "rgb(var(--accent-purple))",
+                    color: "#fff",
+                  }}
+                >
+                  <Zap className="w-4 h-4" />
+                  Go to Dashboard
+                </Link>
+              ) : (
+                <Link
+                  href="/signup"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
+                  style={{
+                    background: "rgb(var(--accent-purple))",
+                    color: "#fff",
+                  }}
+                >
+                  <Zap className="w-4 h-4" />
+                  Start for free
+                </Link>
+              )
+            )}
             <button
               className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg hp-btn-ghost"
               style={{
@@ -989,7 +1054,7 @@ export default function HomePage() {
                 {/* CTA Button */}
                 <div className="px-6 pb-6">
                   <Link
-                    href="/"
+                    href={isAuthenticated ? "/dashboard" : "/signup"}
                     className="block w-full text-center py-2.5 text-sm font-medium rounded-lg transition-all"
                     style={{
                       background: plan.popular
@@ -1003,7 +1068,7 @@ export default function HomePage() {
                         : "0.5px solid rgba(var(--border-primary))",
                     }}
                   >
-                    {plan.cta}
+                    {isAuthenticated ? "Go to Dashboard" : plan.cta}
                   </Link>
                 </div>
               </div>
@@ -1314,28 +1379,44 @@ export default function HomePage() {
               Free to start, no credit card needed.
             </p>
             <div className="flex items-center justify-center gap-3 flex-wrap">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
-                style={{
-                  background: "rgb(var(--accent-purple))",
-                  color: "#fff",
-                }}
-              >
-                <Zap className="w-4 h-4" />
-                Start for free
-              </Link>
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-ghost"
-                style={{
-                  color: "rgb(var(--text-secondary))",
-                  border: "0.5px solid rgba(var(--border-primary))",
-                }}
-              >
-                View dashboard
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+              {isAuthenticated ? (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
+                  style={{
+                    background: "rgb(var(--accent-purple))",
+                    color: "#fff",
+                  }}
+                >
+                  <Zap className="w-4 h-4" />
+                  Go to Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-primary"
+                    style={{
+                      background: "rgb(var(--accent-purple))",
+                      color: "#fff",
+                    }}
+                  >
+                    <Zap className="w-4 h-4" />
+                    Start for free
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg hp-btn-ghost"
+                    style={{
+                      color: "rgb(var(--text-secondary))",
+                      border: "0.5px solid rgba(var(--border-primary))",
+                    }}
+                  >
+                    View dashboard
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

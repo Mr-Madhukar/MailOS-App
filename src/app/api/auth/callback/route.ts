@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { corsair } from "@/server/corsair";
+import { corsair, db } from "@/server/corsair";
 import { gmail } from "@corsair-dev/gmail";
 import { googlecalendar } from "@corsair-dev/googlecalendar";
 import { exchangeCodeForTokens } from "corsair/core";
 import { ensureIntegrationAndAccount } from "@/server/db/ensure";
+import { users } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
+import { signJwt, verifyJwt } from "@/lib/jwt";
+import { cookies } from "next/headers";
+import crypto from "crypto";
 
 export async function GET(req: Request) {
   try {
@@ -15,12 +20,102 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing code or state parameter" }, { status: 400 });
     }
 
+    if (pluginId === "google_login" || pluginId === "google-login") {
+      // 1. Exchange code for user tokens
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!,
+          client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
+          redirect_uri: process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback",
+          grant_type: "authorization_code",
+        }),
+      });
+
+      const tokens = await tokenResponse.json();
+      if (!tokens.access_token) {
+        return NextResponse.json({ error: "Failed to exchange code for tokens", details: tokens }, { status: 500 });
+      }
+
+      // 2. Fetch user profile
+      const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const userInfo = await userInfoResponse.json();
+
+      if (!userInfo.email) {
+        return NextResponse.json({ error: "Failed to retrieve user email from Google" }, { status: 500 });
+      }
+
+      const email = userInfo.email.toLowerCase().trim();
+      const name = userInfo.name || userInfo.given_name || "Google User";
+
+      // 3. Find or register user
+      let user = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .then((rows) => rows[0]);
+
+      if (!user) {
+        const userId = crypto.randomUUID();
+        await db.insert(users).values({
+          id: userId,
+          email,
+          name,
+          passwordHash: "", // Google accounts do not use password logins by default
+        });
+        user = {
+          id: userId,
+          email,
+          name,
+          passwordHash: "",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+
+      // 4. Generate JWT (valid for 7 days)
+      const token = signJwt({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+      });
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const response = NextResponse.redirect(`${appUrl}/dashboard`);
+
+      // 5. Set session cookie
+      response.cookies.set("mailos_token", token, {
+        httpOnly: true,
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+
+      return response;
+    }
+
     if (pluginId !== "gmail" && pluginId !== "googlecalendar") {
       return NextResponse.json({ error: "Invalid state parameter" }, { status: 400 });
     }
 
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
     // 1. Ensure integration and account exist in DB
-    await ensureIntegrationAndAccount(pluginId);
+    await ensureIntegrationAndAccount(pluginId, userId);
 
     // 2. Get client_id, client_secret, and redirect_url from DB
     let clientId: string | null = null;
@@ -58,29 +153,30 @@ export async function GET(req: Request) {
     }
 
     // 5. Store tokens in account key manager
+    const userCorsair = corsair.withTenant(userId);
     if (pluginId === "gmail") {
-      await corsair.gmail.keys.set_access_token(tokens.access_token);
+      await userCorsair.gmail.keys.set_access_token(tokens.access_token);
       if (tokens.refresh_token) {
-        await corsair.gmail.keys.set_refresh_token(tokens.refresh_token);
+        await userCorsair.gmail.keys.set_refresh_token(tokens.refresh_token);
       }
       if (tokens.expires_in) {
         const expiresAt = (Math.floor(Date.now() / 1000) + tokens.expires_in).toString();
-        await corsair.gmail.keys.set_expires_at(expiresAt);
+        await userCorsair.gmail.keys.set_expires_at(expiresAt);
       }
     } else {
-      await corsair.googlecalendar.keys.set_access_token(tokens.access_token);
+      await userCorsair.googlecalendar.keys.set_access_token(tokens.access_token);
       if (tokens.refresh_token) {
-        await corsair.googlecalendar.keys.set_refresh_token(tokens.refresh_token);
+        await userCorsair.googlecalendar.keys.set_refresh_token(tokens.refresh_token);
       }
       if (tokens.expires_in) {
         const expiresAt = (Math.floor(Date.now() / 1000) + tokens.expires_in).toString();
-        await corsair.googlecalendar.keys.set_expires_at(expiresAt);
+        await userCorsair.googlecalendar.keys.set_expires_at(expiresAt);
       }
     }
 
-    // Redirect to home page
+    // Redirect to dashboard page
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${appUrl}/?connected=${pluginId}`);
+    return NextResponse.redirect(`${appUrl}/dashboard?connected=${pluginId}`);
   } catch (error: any) {
     console.error("OAuth Callback Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

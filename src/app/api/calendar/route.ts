@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsair } from "@/server/corsair";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 const MOCK_EVENTS = [
   {
@@ -50,9 +52,21 @@ const MOCK_EVENTS = [
 
 export async function GET() {
   try {
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     let isConnected = false;
     try {
-      const accessToken = await corsair.googlecalendar.keys.get_access_token();
+      const accessToken = await userCorsair.googlecalendar.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -72,7 +86,7 @@ export async function GET() {
     timeMax.setDate(timeMax.getDate() + 30);
     timeMax.setHours(23, 59, 59, 999);
 
-    const listResult = await corsair.googlecalendar.api.events.getMany({
+    const listResult = await userCorsair.googlecalendar.api.events.getMany({
       calendarId: "primary",
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
@@ -171,6 +185,18 @@ export async function GET() {
 // POST /api/calendar — Create a new calendar event
 export async function POST(req: Request) {
   try {
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     const { summary, description, startDateTime, endDateTime, attendees, addMeet } =
       await req.json();
 
@@ -183,7 +209,7 @@ export async function POST(req: Request) {
 
     let isConnected = false;
     try {
-      const accessToken = await corsair.googlecalendar.keys.get_access_token();
+      const accessToken = await userCorsair.googlecalendar.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -217,7 +243,7 @@ export async function POST(req: Request) {
       };
     }
 
-    const result = await corsair.googlecalendar.api.events.create({
+    const result = await userCorsair.googlecalendar.api.events.create({
       calendarId: "primary",
       event: eventBody,
     });

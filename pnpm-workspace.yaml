@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+patchedDependencies:
+  '@corsair-dev/googlecalendar': patches/@corsair-dev__googlecalendar.patch

@@ -12,5 +12,5 @@ export const corsair = createCorsair({
     plugins: [googlecalendar(), gmail()],
     database: pool,
     kek: process.env.CORSAIR_KEK!,
-    multiTenancy: false,
+    multiTenancy: true,
 });

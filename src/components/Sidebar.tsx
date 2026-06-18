@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   Archive,
   Command,
@@ -12,6 +13,7 @@ import {
   Settings,
   Star,
   Sun,
+  LogOut,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Folder } from "@/hooks/useEmails";
@@ -29,6 +31,8 @@ interface SidebarProps {
   };
   theme: Theme;
   onToggleTheme: () => void;
+  currentUser?: { name: string; email: string } | null;
+  onLogout?: () => void;
 }
 
 const NAV_ITEMS: {
@@ -72,31 +76,37 @@ export default function Sidebar({
   settings,
   theme,
   onToggleTheme,
+  currentUser,
+  onLogout,
 }: SidebarProps) {
-  const userName =
+  const userName = currentUser?.name || (
     settings.gmail.connected && settings.gmail.emailAddress
       ? settings.gmail.emailAddress
           .split("@")[0]
           .split(/[._-]/)
           .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
           .join(" ")
-      : "Madhukar";
+      : "Madhukar"
+  );
 
-  const userEmail =
+  const userEmail = currentUser?.email || (
     settings.gmail.connected && settings.gmail.emailAddress
       ? settings.gmail.emailAddress
-      : "madhukardev@gmail.com";
+      : "madhukardev@gmail.com"
+  );
 
-  const userInitials =
-    settings.gmail.connected && settings.gmail.emailAddress
-      ? settings.gmail.emailAddress.split("@")[0].slice(0, 2).toUpperCase()
-      : "Mr";
+  const userInitials = userName
+    .split(" ")
+    .map((word: string) => word.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "Mr";
 
   return (
-    <aside className="sidebar-desktop shrink-0 border-r flex p-4 flex-col w-[200px] justify-between transition-colors" style={{ borderColor: "rgba(var(--border-primary))", background: "rgb(var(--bg-primary))" }}>
+    <aside className="sidebar-desktop shrink-0 border-r flex p-4 flex-col w-[200px] h-full min-h-0 overflow-hidden justify-between transition-colors" style={{ borderColor: "rgba(var(--border-primary))", background: "rgb(var(--bg-primary))" }}>
       <div className="flex flex-col">
         {/* Logo */}
-        <div className="flex px-2 pt-2 pb-4 items-center gap-2">
+        <Link href="/" className="flex px-2 pt-2 pb-4 items-center gap-2 hover:opacity-80 transition-opacity">
           <div
             className="size-7 rounded-lg flex justify-center items-center"
             style={{ background: "rgba(var(--text-primary), 0.1)", color: "rgb(var(--text-primary))" }}
@@ -106,7 +116,7 @@ export default function Sidebar({
           <span className="font-semibold text-lg leading-7 tracking-tight" style={{ color: "rgb(var(--text-primary))" }}>
             MailOS
           </span>
-        </div>
+        </Link>
 
         {/* Compose Button */}
         <button
@@ -206,6 +216,26 @@ export default function Sidebar({
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           {theme === "dark" ? "Light Mode" : "Dark Mode"}
         </button>
+
+        {/* Logout Button */}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{ color: "rgb(var(--text-secondary))" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(var(--accent-red), 0.1)";
+              e.currentTarget.style.color = "rgb(var(--accent-red))";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "rgb(var(--text-secondary))";
+            }}
+          >
+            <LogOut className="size-4" style={{ color: "rgb(var(--accent-red))" }} />
+            Sign Out
+          </button>
+        )}
 
         {/* User Profile */}
         <div

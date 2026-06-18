@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { corsair } from "@/server/corsair";
 import { ensureIntegrationAndAccount } from "@/server/db/ensure";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 export async function GET() {
   try {
-    await ensureIntegrationAndAccount("gmail");
-    await ensureIntegrationAndAccount("googlecalendar");
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    await ensureIntegrationAndAccount("gmail", userId);
+    await ensureIntegrationAndAccount("googlecalendar", userId);
 
     const gmailClientId = await corsair.keys.gmail.get_client_id();
     const gmailClientSecret = await corsair.keys.gmail.get_client_secret();
@@ -18,8 +30,11 @@ export async function GET() {
     let gmailConnected = false;
     let gmailEmailAddress = "";
     let calendarConnected = false;
+    
+    const userCorsair = corsair.withTenant(userId);
+
     try {
-      const gmailToken = await corsair.gmail.keys.get_access_token();
+      const gmailToken = await userCorsair.gmail.keys.get_access_token();
       gmailConnected = !!gmailToken;
       if (gmailConnected) {
         const profileRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
@@ -33,7 +48,7 @@ export async function GET() {
     } catch {}
 
     try {
-      const calendarToken = await corsair.googlecalendar.keys.get_access_token();
+      const calendarToken = await userCorsair.googlecalendar.keys.get_access_token();
       calendarConnected = !!calendarToken;
     } catch {}
 
@@ -59,8 +74,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await ensureIntegrationAndAccount("gmail");
-    await ensureIntegrationAndAccount("googlecalendar");
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    await ensureIntegrationAndAccount("gmail", userId);
+    await ensureIntegrationAndAccount("googlecalendar", userId);
 
     const { gmail, googlecalendar: calendar } = await req.json();
 

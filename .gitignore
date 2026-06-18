@@ -46,3 +46,10 @@ coverage/
 
 # Misc
 *.pem
+
+# AI Agents & IDE Workspace Tools
+.agents/
+.antigravitycli/
+.claude/
+.commandcode/
+

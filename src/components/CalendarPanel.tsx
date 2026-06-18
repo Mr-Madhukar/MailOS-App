@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import AiAgentPanel from "@/components/AiAgentPanel";
 import {
   ChevronLeft,
   ChevronRight,
   Clock,
   Plus,
-  Sparkles,
   TriangleAlert,
   Users,
   Video,
@@ -101,7 +101,7 @@ export default function CalendarPanel({
 
   return (
     <aside
-      className="calendar-desktop shrink-0 flex p-4 flex-col w-[280px] justify-between transition-colors"
+      className="calendar-desktop shrink-0 flex p-4 flex-col w-[280px] h-full min-h-0 overflow-hidden justify-between transition-colors"
       style={{ background: "rgb(var(--bg-primary))" }}
     >
       <div className="flex flex-col flex-1 overflow-hidden">
@@ -348,35 +348,7 @@ export default function CalendarPanel({
       </div>
 
       {/* AI Agent Section */}
-      <div className="border-t mt-4 pt-4" style={{ borderColor: "rgba(var(--border-primary))" }}>
-        <p
-          className="font-semibold uppercase text-xs leading-4 tracking-wider flex px-1 items-center gap-1.5"
-          style={{ color: "rgb(var(--text-secondary))" }}
-        >
-          <Sparkles className="size-3" style={{ color: "rgb(var(--text-primary))" }} />
-          AI Agent
-        </p>
-        <div className="flex mt-3 items-center gap-2">
-          <input
-            className="rounded-lg text-sm leading-5 border px-3 py-2 flex-1 focus:outline-none focus:ring-1"
-            placeholder="Send invite to madhukardev@gmail.com..."
-            style={{
-              background: "rgba(var(--bg-tertiary), 0.6)",
-              borderColor: "rgba(var(--border-primary))",
-              color: "rgb(var(--text-primary))",
-            }}
-          />
-          <button
-            className="size-9 shrink-0 rounded-lg flex justify-center items-center transition-colors"
-            style={{
-              background: "rgb(var(--btn-primary-bg))",
-              color: "rgb(var(--btn-primary-text))",
-            }}
-          >
-            <Sparkles className="size-4" />
-          </button>
-        </div>
-      </div>
+      <AiAgentPanel />
     </aside>
   );
 }

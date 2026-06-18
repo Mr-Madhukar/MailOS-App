@@ -44,6 +44,33 @@ function MailOSApp() {
     googlecalendar: { clientId: "", clientSecret: "", connected: false },
   });
 
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+
+  // ── Fetch current user ──
+  const fetchUser = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
+
+  // ── Handle logout ──
+  const handleLogout = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) {
+        window.location.href = "/login";
+      }
+    } catch {}
+  }, []);
+
   // Modal states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -356,7 +383,15 @@ function MailOSApp() {
         icon: Sparkles,
         category: "ai",
         action: () => {
-          addToast({ message: "AI features require an API key. Enable in settings.", type: "info" });
+          // Focus the AI agent input — it lives in CalendarPanel
+          const aiInput = document.querySelector('#ai-chat-form textarea') as HTMLTextAreaElement;
+          if (aiInput) {
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+            nativeInputValueSetter.call(aiInput, 'Summarize my latest emails');
+            aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+            aiInput.focus();
+            addToast({ message: "AI Agent ready — press Enter to summarize", type: "info" });
+          }
         },
       },
       {
@@ -366,7 +401,18 @@ function MailOSApp() {
         icon: Sparkles,
         category: "ai",
         action: () => {
-          addToast({ message: "AI features require an API key. Enable in settings.", type: "info" });
+          const selectedEmail = emailHook.selectedEmail;
+          const aiInput = document.querySelector('#ai-chat-form textarea') as HTMLTextAreaElement;
+          if (aiInput) {
+            const prompt = selectedEmail
+              ? `Draft a professional reply to the email from "${selectedEmail.from}" about "${selectedEmail.subject}"`
+              : "Draft a reply to my latest email";
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+            nativeInputValueSetter.call(aiInput, prompt);
+            aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+            aiInput.focus();
+            addToast({ message: "AI Agent ready — press Enter to draft reply", type: "info" });
+          }
         },
       },
     ],
@@ -527,11 +573,13 @@ function MailOSApp() {
             settings={settings}
             theme={theme}
             onToggleTheme={toggleTheme}
+            currentUser={currentUser}
+            onLogout={handleLogout}
           />
 
           {/* Email List */}
           <div 
-            className={`flex flex-col min-w-[260px] h-full shrink-0 border-r ${showEmailThread ? "hide-mobile" : "flex-1"}`} 
+            className={`flex flex-col min-w-[260px] h-full min-h-0 overflow-hidden shrink-0 border-r ${showEmailThread ? "hide-mobile" : "flex-1"}`} 
             style={{ 
               width: showEmailThread ? `${listWidth}px` : undefined,
               borderColor: "rgba(var(--border-primary))"

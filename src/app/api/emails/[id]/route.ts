@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsair } from "@/server/corsair";
+import { cookies } from "next/headers";
+import { verifyJwt } from "@/lib/jwt";
 
 // GET /api/emails/:id — Fetch a single email with full body
 export async function GET(
@@ -9,13 +11,26 @@ export async function GET(
   try {
     const { id } = params;
 
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     let isConnected = false;
+    let accessToken: string | null = null;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
-    if (!isConnected) {
+    if (!isConnected || !accessToken) {
       // Return mock email detail for demo mode
       return NextResponse.json({
         demo: true,
@@ -33,19 +48,29 @@ export async function GET(
       });
     }
 
-    const details = await corsair.gmail.api.messages.get({
-      id,
-      format: "full",
-    });
+    const detailRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!detailRes.ok) {
+      throw new Error(`Failed to fetch message details: ${detailRes.status} ${detailRes.statusText}`);
+    }
+
+    const details = await detailRes.json();
 
     const headers = details.payload?.headers || [];
     const fromHeader =
-      headers.find((h) => h.name?.toLowerCase() === "from")?.value || "Unknown";
+      headers.find((h: any) => h.name?.toLowerCase() === "from")?.value || "Unknown";
     const subjectHeader =
-      headers.find((h) => h.name?.toLowerCase() === "subject")?.value ||
+      headers.find((h: any) => h.name?.toLowerCase() === "subject")?.value ||
       "No Subject";
     const dateHeader =
-      headers.find((h) => h.name?.toLowerCase() === "date")?.value || "";
+      headers.find((h: any) => h.name?.toLowerCase() === "date")?.value || "";
 
     // Extract body
     let body = "";
@@ -53,10 +78,10 @@ export async function GET(
       body = Buffer.from(details.payload.body.data, "base64").toString("utf-8");
     } else if (details.payload?.parts) {
       const htmlPart = details.payload.parts.find(
-        (p) => p.mimeType === "text/html"
+        (p: any) => p.mimeType === "text/html"
       );
       const textPart = details.payload.parts.find(
-        (p) => p.mimeType === "text/plain"
+        (p: any) => p.mimeType === "text/plain"
       );
       const part = htmlPart || textPart;
       if (part?.body?.data) {
@@ -93,9 +118,21 @@ export async function PATCH(
     const { id } = params;
     const { action } = await req.json();
 
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     let isConnected = false;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      const accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -132,7 +169,7 @@ export async function PATCH(
         );
     }
 
-    await corsair.gmail.api.messages.modify({
+    await userCorsair.gmail.api.messages.modify({
       id,
       addLabelIds,
       removeLabelIds,
@@ -153,9 +190,21 @@ export async function DELETE(
   try {
     const { id } = params;
 
+    const token = cookies().get("mailos_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyJwt(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.userId;
+
+    const userCorsair = corsair.withTenant(userId);
+
     let isConnected = false;
     try {
-      const accessToken = await corsair.gmail.keys.get_access_token();
+      const accessToken = await userCorsair.gmail.keys.get_access_token();
       isConnected = !!accessToken;
     } catch {}
 
@@ -163,7 +212,7 @@ export async function DELETE(
       return NextResponse.json({ demo: true, success: true });
     }
 
-    await corsair.gmail.api.messages.trash({ id });
+    await userCorsair.gmail.api.messages.trash({ id });
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Delete Email Error:", error);
