@@ -1,6 +1,7 @@
 {
   "name": "MailOS App",
   "version": "1.0.0",
+  "packageManager": "pnpm@11.5.3",
   "description": "MailOS — Keyboard-first AI command center for email and calendar",
   "scripts": {
     "dev": "next dev",
