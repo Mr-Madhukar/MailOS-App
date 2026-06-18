@@ -39,8 +39,12 @@ You can perform real actions on the user's behalf:
 
 ## Current Context
 - Current date/time: ${new Date().toLocaleString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+- Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
 - App: MailOS — Keyboard-First AI Command Center
-- Platform: Web (Next.js)`;
+- Platform: Web (Next.js)
+
+## IMPORTANT: DateTime Format for Calendar Events
+When creating calendar events, ALWAYS generate dateTime values in full ISO 8601 format with timezone offset. Example: "2026-06-25T09:00:00+05:30". NEVER omit the timezone offset.`;
 
 export async function POST(req: Request) {
   try {
@@ -99,13 +103,30 @@ export async function POST(req: Request) {
             };
           }
           try {
-            const rawEmail = [
+            // Fetch the user's email address for the From header (required by Gmail API)
+            let fromEmail = "";
+            try {
+              const profileRes = await fetch(
+                "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+                { headers: { Authorization: `Bearer ${gmailAccessToken}` } }
+              );
+              if (profileRes.ok) {
+                const profile = await profileRes.json();
+                fromEmail = profile.emailAddress || "";
+              }
+            } catch {}
+
+            const headers = [
               `To: ${to}`,
               `Subject: ${subject}`,
+              "MIME-Version: 1.0",
               "Content-Type: text/plain; charset=utf-8",
-              "",
-              body,
-            ].join("\r\n");
+            ];
+            if (fromEmail) {
+              headers.unshift(`From: ${fromEmail}`);
+            }
+
+            const rawEmail = [...headers, "", body || ""].join("\r\n");
 
             const encodedMessage = Buffer.from(rawEmail)
               .toString("base64")
@@ -122,9 +143,11 @@ export async function POST(req: Request) {
               message: `Email sent to ${to} with subject "${subject}"`,
             };
           } catch (error: any) {
+            const detail = error.body ? JSON.stringify(error.body) : error.message;
+            console.error("AI send_email error detail:", detail, error);
             return {
               success: false,
-              error: `Failed to send email: ${error.message}`,
+              error: `Failed to send email: ${detail}`,
             };
           }
         },
@@ -137,10 +160,10 @@ export async function POST(req: Request) {
           summary: z.string().describe("Event title"),
           startDateTime: z
             .string()
-            .describe("Start date/time in ISO 8601 format (e.g., 2026-06-19T15:00:00)"),
+            .describe("Start date/time in ISO 8601 format with timezone offset (e.g., 2026-06-19T15:00:00+05:30). MUST include timezone offset."),
           endDateTime: z
             .string()
-            .describe("End date/time in ISO 8601 format (e.g., 2026-06-19T16:00:00)"),
+            .describe("End date/time in ISO 8601 format with timezone offset (e.g., 2026-06-19T16:00:00+05:30). MUST include timezone offset."),
           description: z.string().default("").describe("Optional event description"),
           attendees: z
             .array(z.string())
@@ -156,22 +179,42 @@ export async function POST(req: Request) {
             };
           }
           try {
+            // Ensure dateTime values are valid ISO 8601 with timezone info
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const ensureValidDateTime = (dt: string): string => {
+              // If the datetime already has a timezone offset (+ or Z at end), use as-is
+              if (/[Zz]$/.test(dt) || /[+-]\d{2}:\d{2}$/.test(dt) || /[+-]\d{4}$/.test(dt)) {
+                return dt;
+              }
+              // Otherwise, parse and convert to a proper ISO string
+              const parsed = new Date(dt);
+              if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString();
+              }
+              return dt; // fallback, let Google API handle the error
+            };
+
+            const validStart = ensureValidDateTime(startDateTime);
+            const validEnd = ensureValidDateTime(endDateTime);
+
             const eventBody: any = {
               summary,
               description: description || "",
               start: {
-                dateTime: startDateTime,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                dateTime: validStart,
+                timeZone: tz,
               },
               end: {
-                dateTime: endDateTime,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                dateTime: validEnd,
+                timeZone: tz,
               },
             };
 
             if (attendees && attendees.length > 0) {
               eventBody.attendees = attendees.map((email: string) => ({ email }));
             }
+
+            console.log("[AI create_event] Creating event with body:", JSON.stringify(eventBody));
 
             const result = await userCorsair.googlecalendar.api.events.create({
               calendarId: "primary",
@@ -180,13 +223,15 @@ export async function POST(req: Request) {
 
             return {
               success: true,
-              message: `Event "${summary}" created on ${new Date(startDateTime).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} at ${new Date(startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+              message: `Event "${summary}" created on ${new Date(validStart).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} at ${new Date(validStart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
               eventId: result?.id,
             };
           } catch (error: any) {
+            const detail = error.body ? JSON.stringify(error.body) : error.message;
+            console.error("AI create_event error detail:", detail, error);
             return {
               success: false,
-              error: `Failed to create event: ${error.message}`,
+              error: `Failed to create event: ${detail}`,
             };
           }
         },

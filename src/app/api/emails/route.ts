@@ -478,13 +478,31 @@ export async function POST(req: Request) {
     }
 
     // Build raw email in RFC 2822 format
-    const rawEmail = [
+    // Fetch sender's email for the From header (required by Gmail API)
+    let fromEmail = "";
+    try {
+      const accessToken = await userCorsair.gmail.keys.get_access_token();
+      const profileRes = await fetch(
+        "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        fromEmail = profile.emailAddress || "";
+      }
+    } catch {}
+
+    const headers = [
       `To: ${to}`,
       `Subject: ${subject}`,
+      "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=utf-8",
-      "",
-      body || "",
-    ].join("\r\n");
+    ];
+    if (fromEmail) {
+      headers.unshift(`From: ${fromEmail}`);
+    }
+
+    const rawEmail = [...headers, "", body || ""].join("\r\n");
 
     const encodedMessage = Buffer.from(rawEmail)
       .toString("base64")
@@ -498,7 +516,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Send Email Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const detail = error.body ? JSON.stringify(error.body) : error.message;
+    console.error("Send Email Error:", detail, error);
+    return NextResponse.json({ error: detail }, { status: 500 });
   }
 }
