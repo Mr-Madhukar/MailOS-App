@@ -23,7 +23,17 @@ export async function GET(req: Request) {
     }
 
     if (pluginId === "google_login" || pluginId === "google-login") {
-      // 1. Exchange code for user tokens
+      // Dynamically detect Google login redirect URI from the incoming request URL
+      let googleRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+      try {
+        const currentUrl = new URL(req.url);
+        if (currentUrl.hostname === "localhost") {
+          googleRedirectUri = "http://localhost:3000/api/auth/callback";
+        } else {
+          googleRedirectUri = `${currentUrl.origin}/api/auth/callback`;
+        }
+      } catch {}
+
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -31,7 +41,7 @@ export async function GET(req: Request) {
           code,
           client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!,
           client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
-          redirect_uri: process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback",
+          redirect_uri: googleRedirectUri,
           grant_type: "authorization_code",
         }),
       });
@@ -146,8 +156,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: `No oauthConfig found for ${pluginId}` }, { status: 500 });
     }
 
-    // 4. Exchange code for tokens
-    const redirectUri = redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+    // 4. Exchange code for tokens (dynamically computed to handle Vercel vs localhost mismatches)
+    let redirectUri = redirectUrl;
+    try {
+      const currentUrl = new URL(req.url);
+      if (redirectUrl) {
+        const configRedirect = new URL(redirectUrl);
+        if (currentUrl.host !== configRedirect.host) {
+          redirectUri = `${currentUrl.origin}/api/auth/callback`;
+        }
+      }
+    } catch {}
+
+    if (!redirectUri) {
+      redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+    }
+
     const tokens = await exchangeCodeForTokens(code, clientId, clientSecret, oauthCfg, redirectUri);
 
     if (!tokens.access_token) {

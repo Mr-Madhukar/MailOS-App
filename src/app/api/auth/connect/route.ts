@@ -53,7 +53,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: `No oauthConfig found for ${pluginId}` }, { status: 500 });
     }
 
-    const redirectUri = redirectUrl || process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+    // Dynamically detect origin based on the request headers
+    const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+    let redirectUri = redirectUrl;
+    
+    if (origin) {
+      try {
+        const originUrl = new URL(origin);
+        if (redirectUrl) {
+          const configRedirect = new URL(redirectUrl);
+          if (originUrl.host !== configRedirect.host) {
+            redirectUri = `${originUrl.origin}/api/auth/callback`;
+          }
+        }
+      } catch {}
+    }
+    
+    if (!redirectUri) {
+      redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+    }
     
     // Build parameters explicitly
     const authParams: Record<string, string> = {

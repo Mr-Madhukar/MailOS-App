@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: Request) {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+  
+  let redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
+  try {
+    const currentUrl = new URL(req.url);
+    if (currentUrl.hostname === "localhost") {
+      redirectUri = "http://localhost:3000/api/auth/callback";
+    } else {
+      redirectUri = `${currentUrl.origin}/api/auth/callback`;
+    }
+  } catch {}
 
   if (!clientId) {
     return NextResponse.json({ error: "Google OAuth Client ID not configured" }, { status: 500 });
