@@ -1448,16 +1448,34 @@ export default function HomePage() {
 
           {/* Links */}
           <div className="flex items-center gap-5">
-            {["Privacy", "Terms", "GitHub", "Twitter/X"].map((link) => (
-              <a
-                key={link}
-                href="#"
-                className="text-xs transition-colors hover:underline"
-                style={{ color: "rgb(var(--text-tertiary))" }}
-              >
-                {link}
-              </a>
-            ))}
+            {[
+              { label: "Privacy", href: "/privacy", isExternal: false },
+              { label: "Terms", href: "/terms", isExternal: false },
+              { label: "GitHub", href: "https://github.com/Mr-Madhukar/MailOS-App", isExternal: true },
+              { label: "Twitter/X", href: "#", isExternal: true },
+            ].map((link) =>
+              link.isExternal ? (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  target={link.href !== "#" ? "_blank" : undefined}
+                  rel={link.href !== "#" ? "noopener noreferrer" : undefined}
+                  className="text-xs transition-colors hover:underline"
+                  style={{ color: "rgb(var(--text-tertiary))" }}
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="text-xs transition-colors hover:underline"
+                  style={{ color: "rgb(var(--text-tertiary))" }}
+                >
+                  {link.label}
+                </Link>
+              )
+            )}
           </div>
 
           {/* Credit */}
