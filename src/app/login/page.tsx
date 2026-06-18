@@ -168,6 +168,13 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold" style={{ color: "rgb(var(--text-secondary))" }}>
                   Password
                 </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium hover:underline text-right"
+                  style={{ color: "rgb(var(--accent-purple))" }}
+                >
+                  Forgot password?
+                </Link>
               </div>
               <div className="relative">
                 <input
