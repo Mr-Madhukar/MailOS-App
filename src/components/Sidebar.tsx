@@ -107,12 +107,11 @@ export default function Sidebar({
       <div className="flex flex-col">
         {/* Logo */}
         <Link href="/" className="flex px-2 pt-2 pb-4 items-center gap-2 hover:opacity-80 transition-opacity">
-          <div
-            className="size-7 rounded-lg flex justify-center items-center"
-            style={{ background: "rgba(var(--text-primary), 0.1)", color: "rgb(var(--text-primary))" }}
-          >
-            <Command className="size-4" />
-          </div>
+          <img
+            src="/android-chrome-192x192.png"
+            alt="MailOS Logo"
+            className="size-7 rounded-lg object-contain"
+          />
           <span className="font-semibold text-lg leading-7 tracking-tight" style={{ color: "rgb(var(--text-primary))" }}>
             MailOS
           </span>

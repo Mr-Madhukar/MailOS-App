@@ -352,12 +352,11 @@ export default function HomePage() {
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
             <Link href="/home" className="flex items-center gap-2 shrink-0">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: "rgb(var(--accent-purple))" }}
-              >
-                <Command className="w-4 h-4 text-white" />
-              </div>
+              <img
+                src="/android-chrome-192x192.png"
+                alt="MailOS Logo"
+                className="w-7 h-7 rounded-lg object-contain"
+              />
               <span className="text-base font-semibold" style={{ color: "rgb(var(--text-primary))" }}>
                 MailOS
               </span>
@@ -1432,12 +1431,11 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           {/* Logo */}
           <Link href="/home" className="flex items-center gap-2">
-            <div
-              className="w-6 h-6 rounded-md flex items-center justify-center"
-              style={{ background: "rgb(var(--accent-purple))" }}
-            >
-              <Command className="w-3.5 h-3.5 text-white" />
-            </div>
+            <img
+              src="/android-chrome-192x192.png"
+              alt="MailOS Logo"
+              className="w-6 h-6 rounded-md object-contain"
+            />
             <span
               className="text-sm font-semibold"
               style={{ color: "rgb(var(--text-primary))" }}

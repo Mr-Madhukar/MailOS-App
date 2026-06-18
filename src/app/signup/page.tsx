@@ -100,12 +100,11 @@ export default function SignupPage() {
       <div className="w-full max-w-[440px] animate-fade-in">
         {/* Logo */}
         <Link href="/home" className="flex items-center gap-2 mb-8 justify-center">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "rgb(var(--accent-purple))" }}
-          >
-            <Command className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="/android-chrome-192x192.png"
+            alt="MailOS Logo"
+            className="w-8 h-8 rounded-lg object-contain"
+          />
           <span className="text-xl font-bold" style={{ color: "rgb(var(--text-primary))" }}>
             MailOS
           </span>
