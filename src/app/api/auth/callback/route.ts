@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { corsair, db } from "@/server/corsair";
 import { gmail } from "@corsair-dev/gmail";
