@@ -6,7 +6,19 @@ export type ZonedDayRange = {
 
 /** Wall-clock date in IANA timezone (YYYY-MM-DD). */
 export function zonedDateKey(timeZone: string, ref = new Date()): string {
-  return ref.toLocaleDateString("en-CA", { timeZone });
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(ref);
+
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  return `${map.year}-${map.month}-${map.day}`;
 }
 
 /**
@@ -16,7 +28,7 @@ export function zonedDateKey(timeZone: string, ref = new Date()): string {
 export function getTimeZoneOffsetMs(timeZone: string, date: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
-    hour12: false,
+    hourCycle: "h23",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
