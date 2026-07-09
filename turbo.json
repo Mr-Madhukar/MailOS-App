@@ -55,7 +55,10 @@
     "THREAD_DEFAULT_TIMEZONE",
     "TZ",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
-    "OTEL_SERVICE_NAME"
+    "OTEL_SERVICE_NAME",
+    "E2E_GMAIL_AVAILABLE",
+    "E2E_SESSION_COOKIE",
+    "DOCS_SECRET"
   ],
   "tasks": {
     "build": {

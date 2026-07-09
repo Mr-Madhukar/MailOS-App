@@ -8,15 +8,19 @@ export function createE2eMockInboxService(inner: InboxService): InboxService {
   return {
     ...inner,
     async getConnectionStatus(tenantId) {
+      void tenantId;
       return { gmail: "connected" as const };
     },
     async sendMessage(tenantId, input) {
+      void tenantId;
       return {
         id: `e2e-msg-${Date.now()}`,
         threadId: input.threadId ?? `e2e-thread-${Date.now()}`,
       };
     },
     async createDraft(tenantId, input) {
+      void tenantId;
+      void input;
       return { id: `e2e-draft-${Date.now()}` };
     },
   };

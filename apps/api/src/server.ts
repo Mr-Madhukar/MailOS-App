@@ -20,7 +20,7 @@ import { env } from "./env";
 
 import { createTrpcRateLimitMiddleware } from "./middleware/rate-limiters";
 import { metricsMiddleware } from "./middleware/observe";
-import { snapshot, snapshotMerged, toPrometheusText, incrementCounter } from "./metrics";
+import { snapshotMerged, toPrometheusText, incrementCounter } from "./metrics";
 
 import { googleAuthRouter } from "./routes/google-auth";
 import { corsairAuthRouter } from "./routes/corsair-auth";
@@ -369,6 +369,7 @@ export default app;
 
 // Global error handler — catch unhandled errors outside tRPC.
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  void _next;
   logger.error("Unhandled Express error", {
     path: req.path,
     message: err.message,

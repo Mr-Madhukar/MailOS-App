@@ -15,6 +15,7 @@ export function EmailMessageBody({ bodyHtml, body, snippet, className }: EmailMe
   if (bodyHtml?.trim()) {
     const sanitized = DOMPurify.sanitize(bodyHtml, {
       ADD_ATTR: ["target", "rel"],
+      // eslint-disable-next-line no-useless-escape
       ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     });
 

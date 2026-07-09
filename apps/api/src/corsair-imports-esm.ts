@@ -35,6 +35,7 @@ export function getCorsairSetupModule(): CorsairSetupModule {
 }
 
 function loadCorsairModule<T>(_subpath: string): T {
+  console.debug("loadCorsairModule called on:", _subpath);
   throw new Error(
     "Corsair submodule used before preload — call preloadCorsairImportModules() during serverless boot",
   );

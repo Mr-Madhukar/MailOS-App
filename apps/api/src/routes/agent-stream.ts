@@ -154,7 +154,7 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
       { signal: abortController.signal },
     );
 
-    let persistedSessionId = sessionId;
+    const persistedSessionId = sessionId;
 
     if (sessionId) {
       const updated = await appendAgentSessionTurn(user.id, sessionId, {

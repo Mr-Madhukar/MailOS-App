@@ -8,7 +8,6 @@ import {
   Calendar,
   CheckCircle2,
   Clock3,
-  Loader2,
   Mail,
   Search,
   Sparkles,
@@ -177,7 +176,7 @@ export default function QueuePage() {
     },
   });
 
-  const items = itemsQuery.data?.items ?? [];
+  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data?.items]);
   const pending = items.filter((item) => item.status === "pending" || item.status === "processing");
   const anyBusy = activeItemId !== null || approve.isPending || dismiss.isPending;
 

@@ -306,6 +306,7 @@ export default function CalendarPage() {
 
   const { isDemo: isDemoUser, tryFeature, modal: demoModal } = useDemoAiGuard(userEmail, "calendar");
   const demoEvents = useMemo(() => (isDemoUser && !isConnected ? makeDemoEvents() : []), [isDemoUser, isConnected]);
+  void demoEvents;
 
   const [customDemoEvents, setCustomDemoEvents] = useState<CalendarEventItem[]>(() => {
     if (typeof window === "undefined") return [];
@@ -720,7 +721,7 @@ export default function CalendarPage() {
                       setCustomDemoEvents((prev) => [...prev, newEvent]);
                       setQuickAddText("");
                       toast.success(`Event "${parsed.summary}" added to preview`);
-                    } catch (err) {
+                    } catch {
                       toast.error("Failed to parse prompt. Try 'Lunch tomorrow at noon'");
                     }
                     return;
