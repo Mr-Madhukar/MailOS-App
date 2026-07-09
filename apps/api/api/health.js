@@ -1,7 +1,5 @@
-"use strict";
-
 /** Lightweight health probe — no bundled deps. Used when the main handler is cold-starting. */
-module.exports = (_req, res) => {
+export default (_req, res) => {
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Cache-Control", "no-store");

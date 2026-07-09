@@ -11,11 +11,11 @@ const SHORTCUTS = [
   { keys: "Esc", action: "Close pane or modal" },
 ];
 
-export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ShortcutsHelp({ open, onCloseAction }: { open: boolean; onCloseAction: () => void }) {
   if (!open) return null;
 
   return (
-    <div className="thread-cmdk-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="thread-cmdk-overlay" onClick={(e) => e.target === e.currentTarget && onCloseAction()}>
       <div className="thread-cmdk" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style={{ maxWidth: 420 }}>
         <div className="thread-cmdk-input" style={{ borderBottom: "1px solid var(--thread-line)" }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>Keyboard shortcuts</span>

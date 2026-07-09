@@ -279,10 +279,10 @@ export function ThreadAppShell({ children }: { children: ReactNode }) {
 
       <ThreadCommand
         open={cmdOpen}
-        onClose={() => setCmdOpen(false)}
-        onShowShortcuts={() => setShortcutsOpen(true)}
+        onCloseAction={() => setCmdOpen(false)}
+        onShowShortcutsAction={() => setShortcutsOpen(true)}
       />
-      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <ShortcutsHelp open={shortcutsOpen} onCloseAction={() => setShortcutsOpen(false)} />
     </div>
   );
 }

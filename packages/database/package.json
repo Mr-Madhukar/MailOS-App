@@ -8,7 +8,8 @@
     "./migrate": "./migrate.ts",
     "./pg": "./pg.ts",
     "./schema": "./schema.ts",
-    "./relations": "./relations.ts"
+    "./relations": "./relations.ts",
+    "./scripts/demo-seed-data": "./scripts/demo-seed-data.ts"
   },
   "scripts": {
     "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate",

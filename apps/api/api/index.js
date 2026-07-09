@@ -1,8 +1,9 @@
-"use strict";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
-const fs = require("fs");
-const path = require("path");
-const { pathToFileURL } = require("url");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -75,7 +76,7 @@ async function loadHandler() {
   return handler;
 }
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   try {
     const pathname = requestPath(req);
 

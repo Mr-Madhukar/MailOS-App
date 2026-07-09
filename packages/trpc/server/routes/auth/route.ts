@@ -40,6 +40,98 @@ function getDemoCredentials() {
   };
 }
 
+/**
+ * Auto-seed the demo user and workspace data when the account does not exist.
+ * This prevents demo-login failures on fresh or unseeded deployments.
+ */
+async function ensureDemoUserSeeded(email: string, password: string) {
+  const { db, eq } = await import("@repo/database");
+  const { usersTable } = await import("@repo/database/schema");
+  const { hashPassword } = await import("@repo/services/auth/password");
+  const { threadMailCacheTable } = await import("@repo/database/schema");
+  const { threadQueueItemsTable } = await import("@repo/database/schema");
+
+  // Check if user already exists
+  const [existing] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase().trim()))
+    .limit(1);
+  if (existing) return; // Already seeded
+
+  const passwordHash = await hashPassword(password);
+
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      fullName: "Thread Demo",
+      email: email.toLowerCase().trim(),
+      passwordHash,
+      authProvider: "local",
+      emailVerified: true,
+      verificationToken: null,
+      verificationTokenExpire: null,
+      role: "user",
+      tokenVersion: "0",
+      autoApproveEmail: false,
+      autoApproveAgentEmail: false,
+      autoApproveCalendar: false,
+    })
+    .returning({ id: usersTable.id });
+
+  if (!user) return;
+
+  // Seed demo mail cache
+  try {
+    const { DEMO_MAIL_FIXTURES } = await import("@repo/database/scripts/demo-seed-data");
+    for (const fixture of DEMO_MAIL_FIXTURES) {
+      const lastMessageAt = new Date(Date.now() - fixture.hoursAgo * 3_600_000);
+      const labelIds = ["INBOX", ...(fixture.starred ? ["STARRED"] : [])];
+      await db
+        .insert(threadMailCacheTable)
+        .values({
+          id: `${user.id}:${fixture.threadId}`,
+          userId: user.id,
+          threadId: fixture.threadId,
+          subject: fixture.subject,
+          fromName: fixture.fromName,
+          fromAddress: fixture.fromAddress,
+          snippet: fixture.body,
+          lastMessageAt,
+          messageCount: 1,
+          unread: fixture.unread,
+          labelIds,
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing();
+    }
+  } catch {
+    // Mail cache seeding is best-effort; don't block sign-in.
+  }
+
+  // Seed demo queue items
+  try {
+    const { buildDemoQueueFixtures } = await import("@repo/database/scripts/demo-seed-data");
+    const fixtures = buildDemoQueueFixtures();
+    for (const fixture of fixtures) {
+      await db
+        .insert(threadQueueItemsTable)
+        .values({
+          userId: user.id,
+          kind: fixture.kind,
+          title: fixture.title,
+          preview: fixture.preview,
+          payload: fixture.payload,
+          status: fixture.status,
+          resolvedAt: fixture.status === "pending" ? null : new Date(),
+        })
+        .onConflictDoNothing();
+    }
+  } catch {
+    // Queue seeding is best-effort; don't block sign-in.
+  }
+}
+
 export const authRouter = router({
   getSupportedAuthenticationProviders: publicProcedure
     .meta({ openapi: { method: "GET", path: getPath("/supported-providers"), tags: TAGS } })
@@ -91,7 +183,14 @@ export const authRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Demo login is not enabled." });
         }
         const { email, password } = getDemoCredentials();
-        return await authService.signIn({ email, password }, ctx.res);
+
+        try {
+          return await authService.signIn({ email, password }, ctx.res);
+        } catch {
+          // Account may not exist yet — auto-seed the demo user on first visit.
+          await ensureDemoUserSeeded(email, password);
+          return await authService.signIn({ email, password }, ctx.res);
+        }
       } catch (error) {
         mapAuthError(error);
       }
