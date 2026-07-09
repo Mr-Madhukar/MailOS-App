@@ -1,7 +1,7 @@
 /**
  * Copy dist/ beside api/index.js so Vercel serverless can resolve bundled assets.
  */
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +14,9 @@ if (!existsSync(join(src, "vercel.mjs"))) {
   console.error("[vercel-postbuild] Missing dist/vercel.mjs — run tsup first");
   process.exit(1);
 }
+
+// Create wrapper index.js to support environments/configs that execute node dist/index.js
+writeFileSync(join(src, "index.js"), "import './index.cjs';\n");
 
 if (existsSync(dest)) {
   rmSync(dest, { recursive: true, force: true });
