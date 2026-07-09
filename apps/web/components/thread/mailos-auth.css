@@ -1,0 +1,311 @@
+
+.mailos-auth-screen {
+  --lp-bg: var(--thread-bg, #000000);
+  --lp-surface: var(--thread-surface-raised, #0f0f10);
+  --lp-surface-sunken: var(--thread-surface, #050505);
+  --lp-ink: var(--thread-text, #f5f5f7);
+  --lp-ink-2: var(--thread-muted, #9ca3af);
+  --lp-ink-3: var(--thread-dim, #6b7280);
+  --lp-line: var(--thread-line, rgba(168,174,186,0.32));
+  --lp-line-strong: var(--thread-line-strong, rgba(192,198,210,0.45));
+  --lp-accent: var(--thread-accent, #3b82f6);
+  --lp-accent-bright: var(--thread-accent-bright, #60a5fa);
+  --lp-accent-wash: var(--thread-accent-soft, rgba(59,130,246,0.12));
+  --lp-ease: cubic-bezier(0.2, 0, 0, 1);
+  --lp-shadow-pop: 0 1px 2px rgba(0,0,0,0.4), 0 10px 34px rgba(0,0,0,0.55);
+
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--lp-bg);
+  color: var(--lp-ink);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* ---- subtle ambient glow behind card ---- */
+.mailos-auth-glow {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 700px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--lp-accent) 10%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(80px);
+}
+
+/* ---- nav (matches landing's floating pill) ---- */
+.mailos-auth-nav {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0.85rem 2rem;
+}
+.mailos-auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 650;
+  font-size: 0.86rem;
+  color: var(--lp-ink);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.mailos-auth-nav-links {
+  display: flex;
+  gap: 1.4rem;
+}
+.mailos-auth-nav-links a {
+  color: var(--lp-ink-2);
+  text-decoration: none;
+  font-size: 0.86rem;
+  transition: color 0.12s var(--lp-ease);
+}
+.mailos-auth-nav-links a:hover {
+  color: var(--lp-ink);
+}
+.mailos-auth-nav-spacer { flex: 1; }
+
+/* ---- main centered card area ---- */
+.mailos-auth-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.6rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- override existing ThreadAuthCard styles to match Helm ---- */
+.mailos-auth-screen .thread-auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 2.4rem 2rem 2rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 16px;
+  background: var(--lp-surface);
+  box-shadow: var(--lp-shadow-pop);
+  animation: mailos-auth-rise 0.5s var(--lp-ease) both;
+  text-align: center;
+}
+
+@keyframes mailos-auth-rise {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mailos-auth-screen .thread-auth-card { animation: none; }
+}
+
+.mailos-auth-screen .thread-auth-logo {
+  margin-bottom: 1.4rem;
+  display: flex;
+  justify-content: center;
+}
+
+.mailos-auth-screen .thread-auth-title {
+  font-size: 1.3rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin: 0 0 1.5rem;
+  color: var(--lp-ink);
+}
+
+.mailos-auth-screen .thread-auth-google-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--lp-line-strong);
+  background: var(--lp-surface-sunken);
+  color: var(--lp-ink);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s var(--lp-ease), border-color 0.15s var(--lp-ease);
+}
+.mailos-auth-screen .thread-auth-google-wide:hover {
+  background: color-mix(in srgb, var(--lp-surface-sunken) 90%, var(--lp-ink) 10%);
+  border-color: var(--lp-ink-3);
+}
+
+.mailos-auth-screen .thread-auth-demo-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  margin-top: 8px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--lp-line);
+  background: transparent;
+  color: var(--lp-ink-2);
+  font-size: 0.82rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s var(--lp-ease), color 0.15s var(--lp-ease);
+}
+.mailos-auth-screen .thread-auth-demo-wide:hover {
+  border-color: var(--lp-accent);
+  color: var(--lp-ink);
+}
+
+.mailos-auth-screen .thread-auth-or {
+  margin: 1rem 0;
+  color: var(--lp-ink-3);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.mailos-auth-screen .thread-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mailos-auth-screen .thread-auth-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--lp-line);
+  background: var(--lp-bg);
+  color: var(--lp-ink);
+  font-size: 0.88rem;
+  font-family: inherit;
+  transition: border-color 0.15s var(--lp-ease), background 0.15s var(--lp-ease);
+}
+.mailos-auth-screen .thread-auth-input::placeholder {
+  color: var(--lp-ink-3);
+}
+.mailos-auth-screen .thread-auth-input:focus {
+  outline: none;
+  border-color: var(--lp-accent);
+  background: var(--lp-surface-sunken);
+}
+
+.mailos-auth-screen .thread-auth-hint {
+  font-size: 0.82rem;
+  color: var(--lp-ink-2);
+  margin-bottom: 4px;
+}
+
+.mailos-auth-screen .thread-auth-error {
+  color: #f87171;
+  font-size: 0.82rem;
+  margin: 4px 0;
+  text-align: center;
+}
+
+.mailos-auth-screen .thread-auth-submit {
+  width: 100%;
+  height: 42px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--lp-accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s var(--lp-ease), filter 0.15s var(--lp-ease);
+}
+.mailos-auth-screen .thread-auth-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lp-accent) 90%, #fff 10%);
+  filter: brightness(1.08);
+}
+.mailos-auth-screen .thread-auth-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mailos-auth-screen .thread-auth-footer {
+  margin-top: 1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--lp-ink-3);
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  text-align: center;
+  transition: color 0.12s var(--lp-ease);
+}
+.mailos-auth-screen .thread-auth-footer span {
+  color: var(--lp-accent-bright);
+  font-weight: 500;
+}
+.mailos-auth-screen .thread-auth-footer:hover {
+  color: var(--lp-ink-2);
+}
+
+.mailos-auth-screen .thread-auth-turnstile {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+/* ---- placeholder shimmer (pre-mount) ---- */
+.mailos-auth-screen .thread-auth-input-placeholder,
+.mailos-auth-screen .thread-auth-google-placeholder,
+.mailos-auth-screen .thread-auth-footer-placeholder,
+.mailos-auth-screen .thread-auth-submit-placeholder {
+  background: var(--lp-surface-sunken);
+  border-radius: 10px;
+  animation: mailos-shimmer 1.5s ease-in-out infinite;
+}
+.mailos-auth-screen .thread-auth-input-placeholder {
+  height: 42px;
+}
+.mailos-auth-screen .thread-auth-google-placeholder {
+  height: 42px;
+  border-radius: 999px;
+}
+.mailos-auth-screen .thread-auth-submit-placeholder {
+  height: 42px;
+  border-radius: 999px;
+  margin-top: 4px;
+}
+.mailos-auth-screen .thread-auth-footer-placeholder {
+  height: 20px;
+  width: 60%;
+  margin: 1rem auto 0;
+}
+
+@keyframes mailos-shimmer {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.8; }
+}
+
+/* ---- responsive ---- */
+@media (max-width: 640px) {
+  .mailos-auth-nav-links { display: none; }
+  .mailos-auth-screen .thread-auth-card {
+    padding: 2rem 1.4rem 1.6rem;
+    border-radius: 12px;
+  }
+}

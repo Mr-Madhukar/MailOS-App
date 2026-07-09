@@ -1,0 +1,67 @@
+import type { Metadata } from "next";
+import localFont from "next/font/local";
+import "./globals.css";
+import { caveat } from "~/lib/fonts";
+import { GlobalProviders } from "~/providers/global";
+
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+});
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
+  variable: "--font-geist-mono",
+});
+const threadHero = localFont({
+  src: "./fonts/ThreadHero.ttf",
+  variable: "--font-thread-hero",
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "MailOS — Keyboard-First AI Command Center",
+  description:
+    "Keyboard-first AI command center for email and calendar. Rank urgency, draft replies, and schedule invites — one workspace, your rules.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
+import type { ReactNode } from "react";
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: ReactNode;
+}>) {
+  return (
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: "html,body{background:#020202!important;color:#fff}",
+          }}
+        />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <meta
+          name="google-site-verification"
+          content="0-M21tVL5Opq0r0Ibk-8iE3aISFbUUgT3npGo7Lcu9A"
+        />
+      </head>
+      <body
+        suppressHydrationWarning
+        className={`${geistSans.variable} ${geistMono.variable} ${caveat.variable} ${threadHero.variable} bg-(--landing-bg) text-white antialiased`}
+      >
+        <GlobalProviders>{children}</GlobalProviders>
+      </body>
+    </html>
+  );
+}

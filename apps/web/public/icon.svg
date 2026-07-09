@@ -1,0 +1,58 @@
+<svg width="32" height="32" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F1016"/>
+      <stop offset="100%" stop-color="#050508"/>
+    </linearGradient>
+
+    <!-- Border Gradient -->
+    <linearGradient id="borderGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#3B82F6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#06B6D4" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Left Ribbon Gradient (Indigo to Blue) -->
+    <linearGradient id="leftRibbon" x1="28" y1="38" x2="64" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+
+    <!-- Right Ribbon Gradient (Cyan to Blue) -->
+    <linearGradient id="rightRibbon" x1="100" y1="38" x2="64" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <!-- Envelope Lower Contour Gradient -->
+    <linearGradient id="lowerContour" x1="28" y1="54" x2="100" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#312E81" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#1E1B4B" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.6"/>
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#6366F1" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#22D3EE" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Backdrop -->
+  <rect width="128" height="128" rx="32" fill="url(#bgGrad)"/>
+  <rect x="1" y="1" width="126" height="126" rx="31" stroke="url(#borderGrad)" stroke-width="2" fill="none"/>
+
+  <!-- Envelope Lower Outline (Sleek metallic structure) -->
+  <path d="M 28 54 V 84 C 28 88.4 31.6 92 36 92 H 92 C 96.4 92 100 88.4 100 84 V 54" stroke="url(#lowerContour)" stroke-width="3.5" stroke-linecap="round" fill="#0D0E15" fill-opacity="0.7" />
+
+  <!-- Left Ribbon of the "M" Fold -->
+  <path d="M 28 84 V 48 C 28 40 38 38 46 45 L 64 68" stroke="url(#leftRibbon)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)"/>
+
+  <!-- Right Ribbon of the "M" Fold -->
+  <path d="M 100 84 V 48 C 100 40 90 38 82 45 L 64 68" stroke="url(#rightRibbon)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)"/>
+
+  <!-- Keyboard Command Prompt ('> _') inside the envelope -->
+  <path d="M 54 77 L 59 81 L 54 85" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <rect x="62" y="84" width="7" height="2.5" rx="0.5" fill="#818CF8" />
+</svg>
