@@ -1,14 +1,60 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { logger } from "@repo/logger";
 import AuthService from "@repo/services/auth";
 import { toAuthError } from "@repo/services/auth/errors";
 import { sanitizeRedirectPath } from "@repo/services/auth/safe-redirect";
+import { isGoogleOAuthConfigured, getGoogleOAuthConfig } from "@repo/services/env";
+import { generateGoogleAuthUrl } from "@repo/services/clients/google-oauth";
 import { env } from "../env";
 
 const authService = new AuthService();
 
 export const googleAuthRouter = Router();
+
+googleAuthRouter.get("/google", async (req, res) => {
+  const returnTo = sanitizeRedirectPath(req.query.state as string | undefined);
+  const clientUrl = env.CLIENT_URL;
+
+  if (!isGoogleOAuthConfigured()) {
+    return res.redirect(
+      `${clientUrl}/sign-in?error=${encodeURIComponent(
+        "Google sign-in is not configured. Restart dev server after adding GOOGLE_OAUTH_* to .env",
+      )}`,
+    );
+  }
+
+  try {
+    const nonce = crypto.randomUUID();
+    const config = getGoogleOAuthConfig();
+    const redirectUri = config.redirectUri || `${clientUrl}/api-auth/google/callback`;
+
+    const state = Buffer.from(
+      JSON.stringify({ nonce, returnTo, redirectUri }),
+      "utf8",
+    ).toString("base64url");
+
+    const authUrl = generateGoogleAuthUrl(state);
+
+    res.cookie("thread_oauth_state", nonce, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: env.NODE_ENV === "production" || env.NODE_ENV === "prod",
+      path: "/",
+      maxAge: 10 * 60 * 1000, // 10 minutes in milliseconds
+    });
+
+    return res.redirect(authUrl);
+  } catch (error) {
+    logger.error("Google OAuth initiation failed", error);
+    return res.redirect(
+      `${clientUrl}/sign-in?error=${encodeURIComponent(
+        "Google sign-in failed to start. Check OAuth credentials and restart pnpm run dev.",
+      )}`,
+    );
+  }
+});
 
 const googleCallbackQuerySchema = z.object({
   code: z.string().min(1).optional(),

@@ -1,67 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
-import { OAuth2Client } from "google-auth-library";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { sanitizeRedirectPath } from "@repo/services/auth/safe-redirect";
+import { appendProxiedSetCookies } from "~/lib/proxied-set-cookie";
 
-function readGoogleOAuthConfig() {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
-  if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret };
-}
+const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
 
-function buildGoogleAuthUrl(state: string, redirectUri: string) {
-  const config = readGoogleOAuthConfig();
-  if (!config) throw new Error("Google OAuth is not configured");
-
-  const client = new OAuth2Client({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
-    redirectUri,
-  });
-
-  return client.generateAuthUrl({
-    access_type: "online",
-    scope: ["openid", "email", "profile"],
-    prompt: "select_account",
-    state,
-  });
-}
-
+/** Proxy Google OAuth login initiation so the backend can set cookies and generate the auth URL. */
 export async function GET(request: NextRequest) {
-  const returnTo = sanitizeRedirectPath(request.nextUrl.searchParams.get("state"));
-  const signInUrl = new URL("/sign-in", request.url);
+  const upstream = `${API_BASE}/auth/google${request.nextUrl.search}`;
 
-  if (!readGoogleOAuthConfig()) {
-    signInUrl.searchParams.set(
-      "error",
-      "Google sign-in is not configured. Restart dev server after adding GOOGLE_OAUTH_* to .env",
-    );
-    return NextResponse.redirect(signInUrl);
-  }
-
+  let upstreamRes: Response;
   try {
-    const nonce = crypto.randomUUID();
-    const redirectUri = new URL("/api-auth/google/callback", request.url).toString();
-    const state = Buffer.from(
-      JSON.stringify({ nonce, returnTo, redirectUri }),
-      "utf8",
-    ).toString("base64url");
-    const authUrl = buildGoogleAuthUrl(state, redirectUri);
-    const response = NextResponse.redirect(authUrl);
-    response.cookies.set("thread_oauth_state", nonce, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 10 * 60,
+    upstreamRes = await fetch(upstream, {
+      redirect: "manual",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+      },
     });
-    return response;
   } catch {
+    const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set(
       "error",
-      "Google sign-in failed to start. Check OAuth credentials and restart pnpm run dev.",
+      "Backend API is not running. Run pnpm run dev from the repo root and try again.",
     );
     return NextResponse.redirect(signInUrl);
   }
+
+  const location = upstreamRes.headers.get("location");
+  const response = location
+    ? NextResponse.redirect(location)
+    : new NextResponse(upstreamRes.body, { status: upstreamRes.status });
+
+  appendProxiedSetCookies(response.headers, upstreamRes.headers);
+
+  return response;
 }
