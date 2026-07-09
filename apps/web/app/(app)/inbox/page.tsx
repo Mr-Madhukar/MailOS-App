@@ -32,7 +32,6 @@ import {
 import { SmartContextPanel } from "~/components/app/smart-context-panel";
 import { PriorityBadge } from "~/components/app/priority-badge";
 import { formatPrioritySummary } from "~/lib/priority-display";
-import { DEMO_AI_HIGHLIGHTS } from "~/lib/demo-fixtures";
 import { useDemoAiGuard } from "~/components/app/demo-limit-modal";
 import { isDemoLoginEnabled } from "~/lib/demo-config";
 
@@ -337,6 +336,7 @@ export default function InboxPage() {
     toast.success(`Snoozed until ${wakeLabel}`, {
       action: { label: "Undo", onClick: () => unsnoozeThread(threadId) },
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   const unsnoozeThread = useCallback((threadId: string) => {
@@ -621,9 +621,13 @@ export default function InboxPage() {
     { query: appliedQuery || undefined, limit: PAGE_SIZE },
     { enabled: isConnected && dbSearchMode && view === "inbox", staleTime: 30_000 },
   );
-  const threads = dbSearchMode && view === "inbox" ? (dbSearch.data?.threads ?? []) : inbox.threads;
+  const threads = useMemo(() => {
+    return dbSearchMode && view === "inbox" ? (dbSearch.data?.threads ?? []) : inbox.threads;
+  }, [dbSearchMode, view, dbSearch.data?.threads, inbox.threads]);
 
-  const displayThreads = hasDemoFixtures ? (demoCacheQuery.data?.threads ?? []) : threads;
+  const displayThreads = useMemo(() => {
+    return hasDemoFixtures ? (demoCacheQuery.data?.threads ?? []) : threads;
+  }, [hasDemoFixtures, demoCacheQuery.data?.threads, threads]);
 
   const drafts = useDrafts(isConnected && view === "drafts");
 
@@ -889,9 +893,11 @@ export default function InboxPage() {
         return;
       }
       if (e.key === "s" && r.selectedId) {
-        r.starredIds.has(r.selectedId)
-          ? r.unstarMutate({ threadId: r.selectedId })
-          : r.starMutate({ threadId: r.selectedId });
+        if (r.starredIds.has(r.selectedId)) {
+          r.unstarMutate({ threadId: r.selectedId });
+        } else {
+          r.starMutate({ threadId: r.selectedId });
+        }
         return;
       }
       if (e.key === "b" && r.selectedId) {
@@ -1010,6 +1016,7 @@ export default function InboxPage() {
     if (lastId) {
       setExpandedMessageIds(new Set([lastId]));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedQuery.data, userEmail]);
 
   // Keyboard navigation: j/k move, Enter opens, / focuses search.
@@ -1082,6 +1089,7 @@ export default function InboxPage() {
 
   const connectHref = `/api-connect/gmail?state=${encodeURIComponent("/inbox")}`;
   const queueCount = pendingCount.data?.count ?? 0;
+  void queueCount;
 
   const emailPayload = {
     to: replyTo,
@@ -1737,9 +1745,11 @@ export default function InboxPage() {
                     disabled={starThread.isPending || unstarThread.isPending}
                     onClick={() => {
                       if (!selectedId) return;
-                      starredIds.has(selectedId)
-                        ? unstarThread.mutate({ threadId: selectedId })
-                        : starThread.mutate({ threadId: selectedId });
+                      if (starredIds.has(selectedId)) {
+                        unstarThread.mutate({ threadId: selectedId });
+                      } else {
+                        starThread.mutate({ threadId: selectedId });
+                      }
                     }}
                     title={selectedId && starredIds.has(selectedId) ? "Unstar" : "Star (s)"}
                   >
@@ -1752,9 +1762,11 @@ export default function InboxPage() {
                     disabled={markImportant.isPending || markNotImportant.isPending}
                     onClick={() => {
                       if (!selectedId) return;
-                      importantIds.has(selectedId)
-                        ? markNotImportant.mutate({ threadId: selectedId })
-                        : markImportant.mutate({ threadId: selectedId });
+                      if (importantIds.has(selectedId)) {
+                        markNotImportant.mutate({ threadId: selectedId });
+                      } else {
+                        markImportant.mutate({ threadId: selectedId });
+                      }
                     }}
                     title={selectedId && importantIds.has(selectedId) ? "Remove important" : "Mark important (i)"}
                   >

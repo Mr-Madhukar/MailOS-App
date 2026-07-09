@@ -9,7 +9,6 @@ import path from "node:path";
 const repoRoot = path.resolve(__dirname, "../../../..");
 config({ path: path.join(repoRoot, ".env") });
 
-import { eq } from "@repo/database";
 import db from "@repo/database";
 import { usersTable } from "@repo/database/schema";
 import { INBOX_PAGE_SIZE } from "@repo/services/inbox";

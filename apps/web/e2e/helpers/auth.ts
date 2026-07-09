@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
 
 export async function demoLogin(page: Page, next = "/inbox") {
   await page.goto(`/api-auth/demo?next=${encodeURIComponent(next)}`);

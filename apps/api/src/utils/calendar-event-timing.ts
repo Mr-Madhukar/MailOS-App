@@ -33,7 +33,7 @@ export function resolveGoogleCalendarTiming(input: {
     return { allDay: true as const, startDateTime: startDate, endDateTime: endDate, timeZone };
   }
 
-  let startDateTime = normalizeWallDateTime(input.startDateTime);
+  const startDateTime = normalizeWallDateTime(input.startDateTime);
   let endDateTime = normalizeWallDateTime(input.endDateTime);
 
   if (Date.parse(endDateTime) <= Date.parse(startDateTime)) {

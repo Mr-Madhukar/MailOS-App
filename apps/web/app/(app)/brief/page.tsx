@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowRight,
   Calendar,
   ChevronDown,
   ChevronUp,
@@ -580,6 +579,7 @@ export default function BriefPage() {
       for (const id of prev) merged.add(id);
       return merged;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brief?.generatedAt, brief?.needsAttention]);
 
   const visibleNeedsAttention = useMemo(
