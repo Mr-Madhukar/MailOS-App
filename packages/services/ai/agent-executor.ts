@@ -49,7 +49,7 @@ export type AgentExecutorContext = {
  * Wrap the returned function to inject `onToolCall(name)` for streaming status events.
  */
 export function buildToolExecutor(ctx: AgentExecutorContext) {
-  const { tenantId, userEmail, approvalDefaults, inbox, queue, calendar, actions, emailQueueFingerprints, sendCounter } = ctx;
+  const { tenantId, userEmail, inbox, queue, calendar, actions, emailQueueFingerprints, sendCounter } = ctx;
 
   return async (name: string, args: Record<string, unknown>): Promise<string> => {
     switch (name) {

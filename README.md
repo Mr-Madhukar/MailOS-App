@@ -1,5 +1,7 @@
 # MailOS — Keyboard-First AI Command Center for Gmail + Google Calendar
 
+**Live Production URL:** [https://mailos.mrmadhukar.in](https://mailos.mrmadhukar.in)
+
 MailOS puts Gmail and Google Calendar in one fast, keyboard-driven window where every action — triage, reply, search, schedule — is a single keystroke.
 
 Built on the [Corsair SDK](https://corsair.dev) for the Corsair Hackathon.

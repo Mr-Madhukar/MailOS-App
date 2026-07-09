@@ -41,6 +41,9 @@ const envSchema = z.object({
 });
 
 function createEnv(env: NodeJS.ProcessEnv) {
+  if (process.env.SKIP_ENV_VALIDATION === "true" || process.env.SKIP_ENV_VALIDATION === "1") {
+    return envSchema.partial().parse(env) as unknown as z.infer<typeof envSchema>;
+  }
   const safeParseResult = envSchema.safeParse(env);
   if (!safeParseResult.success) throw new Error(safeParseResult.error.message);
   return safeParseResult.data;

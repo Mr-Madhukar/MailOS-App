@@ -136,7 +136,7 @@ async function fetchOpenAiChoice(
   };
 
   if (url.includes("openrouter.ai")) {
-    headers["HTTP-Referer"] = "http://localhost:3000";
+    headers["HTTP-Referer"] = process.env.CLIENT_URL || "https://mailos.mrmadhukar.in";
     headers["X-Title"] = "MailOS";
   }
 
