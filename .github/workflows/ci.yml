@@ -32,7 +32,7 @@ jobs:
       CLIENT_URL: http://localhost:3000
       BASE_URL: http://localhost:8000
       NEXT_PUBLIC_API_URL: /trpc
-      API_INTERNAL_URL: http://localhost:8000
+      API_INTERNAL_URL: http://127.0.0.1:8000
       SEED_USER_EMAIL: demo@thread.dev
       SEED_DEMO_PASSWORD: DemoPass123!
       DEMO_LOGIN_ENABLED: "true"

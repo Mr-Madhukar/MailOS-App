@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(dashboardUrl);
     appendProxiedSetCookies(response.headers, upstreamRes.headers);
     return response;
-  } catch {
+  } catch (err) {
+    console.error("Demo login fetch failed:", err);
     return demoErrorRedirect(
       request,
       "Demo login unavailable — cannot reach API. Check API_INTERNAL_URL on thread-web.",
