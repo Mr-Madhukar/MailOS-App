@@ -373,11 +373,12 @@ export class CorsairCalendarService implements CalendarService {
     if (!master.recurrence?.length) return masterId;
 
     const allDay = Boolean(instance.start?.date && !instance.start?.dateTime);
-    await corsair.googlecalendar.api.events.patch({
+    await corsair.googlecalendar.api.events.update({
       calendarId: "primary",
       id: masterId,
       sendUpdates: "all",
       event: {
+        ...master,
         recurrence: truncateRecurrenceRules(master.recurrence, splitStart, allDay),
       },
     });
@@ -516,11 +517,18 @@ export class CorsairCalendarService implements CalendarService {
       throw new Error("Google Calendar is not connected");
     }
     const corsair = getCorsair().withTenant(tenantId);
-    const updated = await corsair.googlecalendar.api.events.patch({
+    const existing = await corsair.googlecalendar.api.events.get({
+      calendarId: "primary",
+      id: eventId,
+    });
+    const updated = await corsair.googlecalendar.api.events.update({
       calendarId: "primary",
       id: eventId,
       sendUpdates: "all",
-      event: patch,
+      event: {
+        ...existing,
+        ...patch,
+      },
     });
     return mapEvent(updated);
   }
@@ -619,7 +627,7 @@ export class CorsairCalendarService implements CalendarService {
 
     // Find the self-attendee (the user themselves) and update their response.
     const selfEmail = (existing.attendees ?? []).find((a: { self?: boolean }) => a.self)?.email;
-    const updatedAttendees = (existing.attendees ?? []).map((a: { email?: string; self?: boolean; responseStatus?: string; displayName?: string; organizer?: boolean; optional?: boolean }) => {
+    const updatedAttendees = (existing.attendees ?? []).map((a: { email?: string; self?: boolean; responseStatus?: "needsAction" | "declined" | "tentative" | "accepted"; displayName?: string; organizer?: boolean; optional?: boolean }) => {
       if (a.self || (selfEmail && a.email === selfEmail)) {
         return { ...a, responseStatus: response };
       }

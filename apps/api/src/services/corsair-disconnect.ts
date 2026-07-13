@@ -25,12 +25,15 @@ export async function disconnectCorsairConnection(
   let apiError: unknown;
   try {
     const corsair = getCorsair();
-    const deleteFn = (corsair.manage as {
-      connections?: { delete: (opts: { tenantId: string; provider: string }) => Promise<void> };
-    }).connections?.delete;
+    const manage = corsair.manage as unknown as {
+      connections?: {
+        delete: (opts: { tenantId: string; provider: string }) => Promise<void>;
+      };
+    };
+    const deleteFn = manage.connections?.delete;
 
     if (deleteFn) {
-      await deleteFn.call(corsair.manage.connections, { tenantId, provider });
+      await deleteFn.call(manage.connections, { tenantId, provider });
       return;
     }
     apiError = new Error("Corsair connections API is not available");

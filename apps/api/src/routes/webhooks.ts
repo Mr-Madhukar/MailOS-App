@@ -113,21 +113,23 @@ async function refreshTenantInboxIncremental(tenantId: string, incomingHistoryId
       if (storedHistoryId) {
         try {
           const corsair = getCorsair().withTenant(tenantId);
-          const historyResp = await (corsair.gmail.api.users as {
-            history?: {
-              list: (opts: {
-                startHistoryId: string;
-                historyTypes?: string[];
-              }) => Promise<{
-                history?: Array<{
-                  messagesAdded?: Array<{ message?: { threadId?: string } }>;
-                  labelsAdded?: Array<{ message?: { threadId?: string } }>;
-                  labelsRemoved?: Array<{ message?: { threadId?: string } }>;
+          const historyResp = await (corsair.gmail.api as unknown as {
+            users: {
+              history?: {
+                list: (opts: {
+                  startHistoryId: string;
+                  historyTypes?: string[];
+                }) => Promise<{
+                  history?: Array<{
+                    messagesAdded?: Array<{ message?: { threadId?: string } }>;
+                    labelsAdded?: Array<{ message?: { threadId?: string } }>;
+                    labelsRemoved?: Array<{ message?: { threadId?: string } }>;
+                  }>;
+                  historyId?: string;
                 }>;
-                historyId?: string;
-              }>;
+              };
             };
-          }).history?.list({
+          }).users.history?.list({
             startHistoryId: storedHistoryId,
             historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
           });
@@ -237,7 +239,7 @@ async function runCorsairProcessWebhook(
 
   try {
     await processWebhook(
-      corsair,
+      corsair as unknown as Parameters<typeof processWebhook>[0],
       headers,
       req.body,
       tenantId ? { tenantId } : undefined,

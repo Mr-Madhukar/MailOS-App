@@ -952,7 +952,7 @@ export class CorsairInboxService implements InboxService {
     if (labelIdCache.has(cacheKey)) return labelIdCache.get(cacheKey)!;
 
     const corsair = getCorsair().withTenant(tenantId);
-    const labelsApi = corsair.gmail.api.labels as {
+    const labelsApi = (corsair.gmail.api.labels as unknown) as {
       list: (opts?: Record<string, unknown>) => Promise<{ labels?: Array<{ id?: string; name?: string }> } | Array<{ id?: string; name?: string }>>;
       create: (opts: Record<string, unknown>) => Promise<{ id?: string; name?: string }>;
     };
@@ -1310,13 +1310,15 @@ export class CorsairInboxService implements InboxService {
     }
 
     const corsair = getCorsair().withTenant(tenantId);
-    const result = await (corsair.gmail.api.users as {
-      watch?: (opts: {
-        userId: string;
-        topicName: string;
-        labelIds?: string[];
-      }) => Promise<{ historyId?: string }>;
-    }).watch?.({
+    const result = await (corsair.gmail.api as unknown as {
+      users: {
+        watch?: (opts: {
+          userId: string;
+          topicName: string;
+          labelIds?: string[];
+        }) => Promise<{ historyId?: string }>;
+      };
+    }).users.watch?.({
       userId: "me",
       topicName: topicId,
       labelIds: ["INBOX"],

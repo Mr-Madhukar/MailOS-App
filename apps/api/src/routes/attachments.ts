@@ -30,22 +30,24 @@ attachmentsRouter.get("/:messageId/:attachmentId", async (req, res) => {
   try {
     const corsair = getCorsair().withTenant(user.id);
     const attachment = await (
-      corsair.gmail.api.users as {
-        messages: {
-          attachments: {
-            get: (opts: {
-              userId: string;
-              messageId: string;
-              id: string;
-            }) => Promise<{ data?: string; size?: number }>;
+      (corsair.gmail.api as unknown as {
+        users: {
+          messages: {
+            attachments: {
+              get: (opts: {
+                userId: string;
+                messageId: string;
+                id: string;
+              }) => Promise<{ data?: string; size?: number }>;
+            };
           };
         };
-      }
-    ).messages.attachments.get({
-      userId: "me",
-      messageId,
-      id: attachmentId,
-    });
+      }).users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: attachmentId,
+      })
+    );
 
     if (!attachment.data) {
       return res.status(404).json({ error: "Attachment data not found" });

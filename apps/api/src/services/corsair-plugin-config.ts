@@ -2,6 +2,8 @@
  * Corsair plugin configuration — permissions, API hooks, webhookHooks per docs.
  */
 import { logger } from "@repo/logger";
+import type { GmailPluginOptions } from "@corsair-dev/gmail";
+import type { GoogleCalendarPluginOptions } from "@corsair-dev/googlecalendar";
 
 import { incrementCounter } from "../metrics";
 import { buildGmailWebhookHooks, buildGoogleCalendarWebhookHooks } from "./corsair-webhook-sync";
@@ -29,7 +31,7 @@ export function buildGmailApiHooks() {
         },
       },
     },
-  };
+  } satisfies GmailPluginOptions["hooks"];
 }
 
 export function buildGoogleCalendarApiHooks() {
@@ -41,13 +43,13 @@ export function buildGoogleCalendarApiHooks() {
         },
       },
       delete: {
-        before: async (_ctx: unknown, args: { id?: string }) => {
+        before: async (ctx, args) => {
           logger.info("corsair.calendar.events.delete requested", { eventId: args.id });
-          return { ctx: _ctx, args };
+          return { ctx, args };
         },
       },
     },
-  };
+  } satisfies GoogleCalendarPluginOptions["hooks"];
 }
 
 export function buildGmailPluginOptions() {

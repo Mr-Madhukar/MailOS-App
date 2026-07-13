@@ -8,7 +8,8 @@
     "module": "CommonJS",
     "paths": {
       "corsair/oauth": ["./node_modules/corsair/dist/oauth.d.ts"],
-      "corsair/setup": ["./node_modules/corsair/dist/setup.d.ts"]
+      "corsair/setup": ["./node_modules/corsair/dist/setup.d.ts"],
+      "corsair/*": ["./node_modules/corsair/dist/*"]
     },
 
     // We don't need these for our final build
