@@ -5,7 +5,7 @@
     "outDir": "./dist",
 
     "moduleResolution": "Node",
-    "module": "CommonJS",
+    "module": "esnext",
     "paths": {
       "corsair/oauth": ["./node_modules/corsair/dist/oauth.d.ts"],
       "corsair/setup": ["./node_modules/corsair/dist/setup.d.ts"],

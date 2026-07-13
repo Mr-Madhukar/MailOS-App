@@ -6,11 +6,18 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import { createPgClient, getMigrationDatabaseUrl } from "./pg";
 
+import { fileURLToPath } from "node:url";
+
 function resolveMigrationsFolder(): string {
+  const currentDir =
+    typeof __dirname !== "undefined"
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
+
   const candidates = [
     path.join(process.cwd(), "packages/database/drizzle"),
-    path.resolve(__dirname, "drizzle"),
-    path.resolve(__dirname, "../drizzle"),
+    path.resolve(currentDir, "drizzle"),
+    path.resolve(currentDir, "../drizzle"),
   ];
 
   for (const folder of candidates) {

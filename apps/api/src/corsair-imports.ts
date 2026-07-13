@@ -5,7 +5,13 @@ import path from "node:path";
  * tsx compiles the API to CJS, which breaks subpath imports from the ESM-only
  * `corsair` package (they resolve to `.d.ts` stubs). Load the compiled JS directly.
  */
-const corsairRequire = createRequire(__filename);
+import { fileURLToPath } from "node:url";
+
+const currentFilename =
+  typeof __filename !== "undefined"
+    ? __filename
+    : fileURLToPath(import.meta.url);
+const corsairRequire = createRequire(currentFilename);
 
 function loadCorsairModule<T>(subpath: string): T {
   const entryPath = corsairRequire.resolve("corsair");

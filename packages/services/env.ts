@@ -4,8 +4,14 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { fileURLToPath } from "node:url";
+
 function loadRootEnv() {
-  let dir = __dirname;
+  const currentDir =
+    typeof __dirname !== "undefined"
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
+  let dir = currentDir;
   for (let i = 0; i < 6; i++) {
     const envPath = path.join(dir, ".env");
     if (fs.existsSync(envPath)) {

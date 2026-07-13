@@ -51,10 +51,10 @@ async function bootstrap() {
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(PORT, () => resolve());
+    server.listen(PORT, "127.0.0.1", () => resolve());
   });
 
-  logger.info(`http server is running on 0.0.0.0:${PORT}`);
+  logger.info(`http server is running on 127.0.0.1:${PORT}`);
 
   bootstrapPromise = (async () => {
     try {

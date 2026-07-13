@@ -4,6 +4,6 @@
   "extends": "./base.json",
   "compilerOptions": {
     "moduleResolution": "Node",
-    "module": "CommonJS"
+    "module": "esnext"
   }
 }
