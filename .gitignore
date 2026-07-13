@@ -141,6 +141,7 @@ Readme.txt
 # IDE and temporary development files
 .vscode/
 mcp-server.json
-scripts/load-test/
+scripts/load-test/*
+!scripts/load-test/health-smoke.mjs
 temp/
 tmp/
