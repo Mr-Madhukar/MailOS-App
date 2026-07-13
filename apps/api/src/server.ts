@@ -66,6 +66,15 @@ function trustedOrigins() {
 }
 
 function requireTrustedOrigin(req: Request, res: Response, next: NextFunction) {
+  // Bypass origin checks for programmatic API/webhook/MCP endpoints
+  if (
+    req.path.startsWith("/webhooks") ||
+    req.path.startsWith("/api/corsair") ||
+    req.path.startsWith("/mcp")
+  ) {
+    return next();
+  }
+
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
 
   const hasCookieAuth = Boolean(req.headers.cookie);
