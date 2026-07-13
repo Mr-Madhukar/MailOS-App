@@ -6,7 +6,7 @@ function getTrpcBaseUrl() {
   if (typeof window !== "undefined") {
     return `${window.location.origin}/trpc`;
   }
-  const apiBase = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
+  const apiBase = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
   return `${apiBase}/trpc`;
 }
 

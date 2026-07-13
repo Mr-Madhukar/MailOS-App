@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { appendProxiedSetCookies } from "~/lib/proxied-set-cookie";
 
-const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
+const API_BASE = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
 
 /** Proxy Google OAuth callback so Set-Cookie headers reach the browser on :3000. */
 export async function GET(request: NextRequest) {

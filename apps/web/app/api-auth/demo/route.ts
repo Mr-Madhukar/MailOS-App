@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { appendProxiedSetCookies } from "~/lib/proxied-set-cookie";
 import { sanitizeRedirectPath } from "@repo/services/auth/safe-redirect";
 
-const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
+const API_BASE = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
 
 function demoErrorRedirect(request: NextRequest, message: string) {
   const signInUrl = new URL("/sign-in", request.url);

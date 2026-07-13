@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { appendProxiedSetCookies } from "~/lib/proxied-set-cookie";
 
-const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
+const API_BASE = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
 
 export const maxDuration = 60;
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(configDir, "../..");
 
-const apiInternalUrl = process.env.API_INTERNAL_URL ?? process.env.BASE_URL ?? "http://localhost:8000";
+const apiInternalUrl = process.env.API_INTERNAL_URL ?? process.env.BASE_URL ?? "http://127.0.0.1:8000";
 
 const scriptSrc =
   process.env.NODE_ENV === "production"
