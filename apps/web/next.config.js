@@ -19,12 +19,12 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api-auth/:path*",
-        destination: `${apiInternalUrl}/auth/:path*`,
+        source: "/api-auth:path*",
+        destination: `${apiInternalUrl}/auth:path*`,
       },
       {
-        source: "/api-connect/:path*",
-        destination: `${apiInternalUrl}/auth/corsair/:path*`,
+        source: "/api-connect:path*",
+        destination: `${apiInternalUrl}/auth/corsair:path*`,
       },
       {
         source: "/agent/stream",
@@ -39,12 +39,12 @@ const nextConfig = {
         destination: `${apiInternalUrl}/mcp/corsair`,
       },
       {
-        source: "/corsair/permissions/:path*",
-        destination: `${apiInternalUrl}/corsair/permissions/:path*`,
+        source: "/corsair/permissions:path*",
+        destination: `${apiInternalUrl}/corsair/permissions:path*`,
       },
       {
-        source: "/api/corsair/:path*",
-        destination: `${apiInternalUrl}/api/corsair/:path*`,
+        source: "/api/corsair:path*",
+        destination: `${apiInternalUrl}/api/corsair:path*`,
       },
       {
         source: "/sync/events",
