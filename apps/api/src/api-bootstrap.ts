@@ -28,11 +28,15 @@ export type ApiBootstrapOptions = {
 export async function runApiBootstrap(opts: ApiBootstrapOptions = {}): Promise<void> {
   const { serverless = false } = opts;
 
-  try {
-    await runMigrations();
-    logger.info("Database schema patches applied");
-  } catch (err) {
-    logger.error("Database migration failed", { err });
+  if (!serverless) {
+    try {
+      await runMigrations();
+      logger.info("Database schema patches applied");
+    } catch (err) {
+      logger.error("Database migration failed", { err });
+    }
+  } else {
+    logger.info("Serverless environment: skipping startup database migrations");
   }
 
   try {
