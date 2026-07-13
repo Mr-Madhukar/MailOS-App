@@ -14,7 +14,21 @@ function writeJson(res: http.ServerResponse, status: number, body: unknown) {
 }
 
 async function bootstrap() {
+  const { logger } = await import("@repo/logger");
+  logger.info("Starting MailOS API bootstrap...");
+
+  await runApiBootstrap({ serverless: false });
+
   let expressHandler: http.RequestListener | null = null;
+  try {
+    const { app } = await import("./server");
+    expressHandler = app;
+    logger.info("Express application loaded successfully");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("Failed to load Express application", { err, message });
+    process.exit(1);
+  }
 
   const server = http.createServer((req, res) => {
     const path = req.url?.split("?")[0] ?? "/";
@@ -22,21 +36,13 @@ async function bootstrap() {
     if (path === "/health" || path === "/") {
       writeJson(res, 200, {
         healthy: true,
-        ready: Boolean(expressHandler),
-        message: expressHandler ? "MailOS API is healthy" : "MailOS API is starting",
+        ready: true,
+        message: "MailOS API is healthy",
       });
       return;
     }
 
-    if (!expressHandler) {
-      writeJson(res, 503, {
-        error: "MailOS API is starting",
-        hint: "Wait a few seconds, or check Postgres is running (pnpm db:up) and DATABASE_URL in .env",
-      });
-      return;
-    }
-
-    expressHandler(req, res);
+    expressHandler!(req, res);
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -44,20 +50,7 @@ async function bootstrap() {
     server.listen(PORT, "0.0.0.0", () => resolve());
   });
 
-  const { logger } = await import("@repo/logger");
   logger.info(`http server is running on 0.0.0.0:${PORT}`);
-
-  await runApiBootstrap({ serverless: false });
-
-  try {
-    const { app } = await import("./server");
-    expressHandler = app;
-    logger.info("Express application loaded");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error("Failed to load Express application", { err, message });
-    return;
-  }
 }
 
 bootstrap().catch((err) => {
