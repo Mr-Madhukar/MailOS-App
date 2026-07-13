@@ -223,12 +223,23 @@ function requireOpenApiDocsAuth(req: Request, res: Response, next: NextFunction)
   return next();
 }
 
-app.use(
-  cors({
-    origin: env.CLIENT_URL,
-    credentials: true,
-  }),
-);
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/corsair") ||
+    req.path.startsWith("/webhooks") ||
+    req.path.startsWith("/mcp")
+  ) {
+    cors({
+      origin: true,
+      credentials: true,
+    })(req, res, next);
+  } else {
+    cors({
+      origin: env.CLIENT_URL,
+      credentials: true,
+    })(req, res, next);
+  }
+});
 
 app.use(requireTrustedOrigin);
 app.use(cookieParser());
