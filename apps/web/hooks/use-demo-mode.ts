@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { env } from "~/env";
 import { isDemoLoginEnabled } from "~/lib/demo-config";
 
-const DEFAULT_EMAIL = "demo@thread.dev";
+const DEFAULT_EMAIL = "demo@mailos.dev";
 
 export type DemoFeature = "agent" | "calendar" | "mail";
 

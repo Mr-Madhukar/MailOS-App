@@ -178,7 +178,7 @@ function userFacingApproveError(error: unknown): string {
 }
 
 function getDemoUserEmail(): string {
-  return (process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@thread.dev").trim().toLowerCase();
+  return (process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev").trim().toLowerCase();
 }
 
 async function isDemoUserId(userId: string): Promise<boolean> {

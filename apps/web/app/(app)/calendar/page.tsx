@@ -92,7 +92,7 @@ function makeDemoEvents(): CalendarEventItem[] {
       end: ev1End.toISOString(),
       location: "Virtual · meet.google.com/thread-demo",
       attendees: [
-        { email: "demo@thread.dev", displayName: "You", responseStatus: "accepted", organizer: true },
+        { email: "demo@mailos.dev", displayName: "You", responseStatus: "accepted", organizer: true },
       ],
     },
     {
@@ -103,7 +103,7 @@ function makeDemoEvents(): CalendarEventItem[] {
       location: "Virtual · meet.google.com/demo",
       attendees: [
         { email: "judge@corsair.dev", displayName: "Judge", responseStatus: "accepted" },
-        { email: "demo@thread.dev", displayName: "Thread Demo", responseStatus: "accepted", organizer: true },
+        { email: "demo@mailos.dev", displayName: "Thread Demo", responseStatus: "accepted", organizer: true },
       ],
     },
     {

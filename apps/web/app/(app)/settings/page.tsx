@@ -257,7 +257,7 @@ export default function SettingsPage() {
             onDisconnect={() => disconnectGmail.mutate({})}
             disconnecting={disconnectGmail.isPending}
             demoBlocked={isDemoUser && inboxStatus.data?.gmail !== "connected"}
-            demoBlockedHint="Connecting Gmail on demo@thread.dev replaces seeded mail with a real inbox."
+            demoBlockedHint="Connecting Gmail on demo@mailos.dev replaces seeded mail with a real inbox."
           />
         </div>
 

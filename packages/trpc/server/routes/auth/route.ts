@@ -35,7 +35,7 @@ function isDemoLoginEnabled() {
 
 function getDemoCredentials() {
   return {
-    email: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@thread.dev",
+    email: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev",
     password: process.env.DEMO_USER_PASSWORD ?? process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!",
   };
 }

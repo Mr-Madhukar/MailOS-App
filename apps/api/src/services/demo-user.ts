@@ -5,7 +5,7 @@ import { usersTable } from "@repo/database/schema";
 export const DEMO_THREAD_ID_PREFIX = "demo-thread-";
 
 export function getDemoUserEmail(): string {
-  return (process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@thread.dev")
+  return (process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev")
     .trim()
     .toLowerCase();
 }

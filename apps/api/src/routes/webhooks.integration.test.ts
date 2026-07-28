@@ -12,7 +12,7 @@ describe("Gmail webhook route", () => {
       .send({
         message: {
           data: Buffer.from(
-            JSON.stringify({ emailAddress: "demo@thread.dev", historyId: "999" }),
+            JSON.stringify({ emailAddress: "demo@mailos.dev", historyId: "999" }),
             "utf8",
           ).toString("base64"),
         },
@@ -29,7 +29,7 @@ describe("Gmail webhook route", () => {
       .send({
         message: {
           data: Buffer.from(
-            JSON.stringify({ emailAddress: "demo@thread.dev", historyId: "12345" }),
+            JSON.stringify({ emailAddress: "demo@mailos.dev", historyId: "12345" }),
             "utf8",
           ).toString("base64"),
         },

@@ -33,14 +33,17 @@ jobs:
       BASE_URL: http://localhost:8000
       NEXT_PUBLIC_API_URL: /trpc
       API_INTERNAL_URL: http://127.0.0.1:8000
-      SEED_USER_EMAIL: demo@thread.dev
+      SEED_USER_EMAIL: demo@mailos.dev
       SEED_DEMO_PASSWORD: DemoPass123!
       DEMO_LOGIN_ENABLED: "true"
-      DEMO_USER_EMAIL: demo@thread.dev
+      DEMO_USER_EMAIL: demo@mailos.dev
       DEMO_USER_PASSWORD: DemoPass123!
       THREAD_E2E_MOCK_GMAIL: "true"
       CI: true
       CORSAIR_WEBHOOK_SECRET: ci-test-webhook-secret-min-16-chars
+      GOOGLE_OAUTH_CLIENT_ID: ci-test-client-id
+      GOOGLE_OAUTH_CLIENT_SECRET: ci-test-client-secret
+      GOOGLE_OAUTH_REDIRECT_URI: http://localhost:3000/api-auth/google/callback
 
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +89,18 @@ jobs:
 
       - name: E2E smoke tests
         run: |
+          if ! curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+            nohup pnpm --filter @repo/api start > /tmp/api.log 2>&1 &
+            for i in {1..45}; do
+              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+          fi
+
           pnpm --filter web test:e2e:install
           pnpm --filter web test:e2e
+
 
 

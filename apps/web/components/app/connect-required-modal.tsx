@@ -79,7 +79,7 @@ export function ConnectRequiredModal({
         <p className="thread-demo-expired-body">{copy.body}</p>
         <p className="thread-connect-gate-note">
           {isDemoUser
-            ? "Nothing was sent. Don't connect Gmail on demo@thread.dev — it replaces sample inbox data."
+            ? "Nothing was sent. Don't connect Gmail on demo@mailos.dev — it replaces sample inbox data."
             : "Nothing was sent. Your queued item is unchanged."}
         </p>
         <div className="thread-demo-expired-ctas">

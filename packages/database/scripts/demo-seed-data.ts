@@ -105,7 +105,7 @@ Action needed: approve compensation band and send official offer by tomorrow so 
     threadId: "demo-thread-meeting-prep",
     subject: "Tomorrow 11am — Corsair hackathon judge walkthrough",
     fromName: "Ishaan",
-    fromAddress: "demo@thread.dev",
+    fromAddress: "demo@mailos.dev",
     body: `Reminder for tomorrow's session:
 
 Agenda (30 min):
@@ -380,7 +380,7 @@ No reply needed — promotional.`,
     threadId: "demo-thread-colleague-fyi",
     subject: "FYI: Updated demo script in Notion",
     fromName: "Ishaan",
-    fromAddress: "demo@thread.dev",
+    fromAddress: "demo@mailos.dev",
     body: `Dropped the judge walkthrough script in Notion — includes Brief → Agent → Queue → Calendar.
 
 No reply needed unless you want changes before demo day.`,

@@ -131,7 +131,7 @@ async function main() {
     throw new Error("DATABASE_URL is required");
   }
 
-  const email = process.env.SEED_USER_EMAIL ?? "demo@thread.dev";
+  const email = process.env.SEED_USER_EMAIL ?? "demo@mailos.dev";
   const password = process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!";
   const fullName = "Thread Demo";
 
