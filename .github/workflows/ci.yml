@@ -66,19 +66,14 @@ jobs:
 
       - run: pnpm build
 
-      - name: E2E smoke tests
-        run: |
-          pnpm --filter web test:e2e:install
-          pnpm --filter web test:e2e
-
       - name: API readiness gate
         run: |
-          pnpm --filter @repo/api start &
-          API_PID=$!
-          trap "kill $API_PID" EXIT
+          nohup pnpm --filter @repo/api start > /tmp/api.log 2>&1 &
 
+          echo "Waiting for API server to become ready..."
           for i in {1..45}; do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "API server is ready!"
               break
             fi
             sleep 2
@@ -88,3 +83,10 @@ jobs:
           curl -fsS http://127.0.0.1:8000/ready
           curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null
           node scripts/load-test/health-smoke.mjs http://127.0.0.1:8000
+
+      - name: E2E smoke tests
+        run: |
+          pnpm --filter web test:e2e:install
+          pnpm --filter web test:e2e
+
+
