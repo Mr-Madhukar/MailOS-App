@@ -45,7 +45,13 @@ async function getRedisClient(): Promise<RedisClient | null> {
   if (redisClient) return redisClient;
   if (!redisInit) {
     redisInit = import("redis").then(async ({ createClient }) => {
-      const client = createClient({ url });
+      const client = createClient({
+        url,
+        socket: {
+          connectTimeout: 1000,
+          reconnectStrategy: false,
+        },
+      });
       client.on("error", () => undefined);
       await client.connect();
       redisClient = client as unknown as RedisClient;

@@ -19,6 +19,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/api/:path((?!auth/demo|auth/google).*)",
+        destination: `${apiInternalUrl}/api/:path*`,
+      },
+      {
         source: "/api-auth",
         destination: `${apiInternalUrl}/auth`,
       },

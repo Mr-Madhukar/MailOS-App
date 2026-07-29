@@ -2256,6 +2256,8 @@
 
 .thread-modal {
   width: min(520px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   border-radius: 14px;
   border: 1px solid var(--thread-line-strong);
   background: #0a0a0a;

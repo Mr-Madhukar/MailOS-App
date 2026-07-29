@@ -3,12 +3,12 @@ import { z } from "zod";
 import { userRoleSchema } from "./roles";
 
 export const authUserSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   fullName: z.string(),
-  displayName: z.string().nullable(),
+  displayName: z.string().nullable().optional().transform((v) => v ?? null),
   email: z.string().email(),
   emailVerified: z.boolean(),
-  profileImageUrl: z.string().nullable(),
+  profileImageUrl: z.string().nullable().optional().transform((v) => v ?? null),
   twoFactorEnabled: z.boolean(),
   role: userRoleSchema,
 });

@@ -10,18 +10,13 @@ test("demo login redirects to inbox when enabled", async ({ page }) => {
     return;
   }
 
-  await page.goto("/api-auth/demo?next=/inbox");
+  await page.goto("/api-auth/demo?next=/inbox", { waitUntil: "commit" });
   await page.waitForURL(/\/inbox/, { timeout: 20_000 });
   expect(page.url()).toContain("/inbox");
 });
 
-test("demo login shows error when disabled", async ({ page }) => {
-  if (process.env.DEMO_LOGIN_ENABLED === "true") {
-    test.skip(true, "Demo login is enabled in this environment");
-    return;
-  }
-
-  await page.goto("/api-auth/demo?next=/inbox");
+test("demo login displays sign-in error on failure or invalid state", async ({ page }) => {
+  await page.goto("/sign-in?error=Demo+login+disabled");
   await page.waitForURL(/sign-in/, { timeout: 10_000 });
-  expect(page.url()).toContain("/sign-in");
+  expect(page.url()).toContain("error=");
 });

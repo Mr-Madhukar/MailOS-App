@@ -38,6 +38,10 @@ export const app = express();
 
 app.set("trust proxy", 1);
 
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({ healthy: true, status: "ok" });
+});
+
 app.use(metricsMiddleware);
 
 app.use(
@@ -60,7 +64,14 @@ function normalizeOrigin(value: string | undefined) {
 
 function trustedOrigins() {
   return new Set(
-    [env.CLIENT_URL, env.BASE_URL, "http://localhost:3000", "http://localhost:8000"]
+    [
+      env.CLIENT_URL,
+      env.BASE_URL,
+      "http://localhost:3000",
+      "http://localhost:8000",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:8000",
+    ]
       .map((value) => normalizeOrigin(value))
       .filter((value): value is string => Boolean(value)),
   );

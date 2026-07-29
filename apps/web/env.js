@@ -1,6 +1,8 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+const DEFAULT_JWT_SECRET = "1eee83f12d4ad0387532f6dc38689a9b7129eeb34a046e03f44c320cafe8965a";
+
 export const env = createEnv({
   /**
    * Specify your server-side environment variables schema here. This way you can ensure the app
@@ -8,7 +10,7 @@ export const env = createEnv({
    */
   server: {
     /** Required by apps/web/proxy.ts for session verification (must match Railway API). */
-    JWT_SECRET: z.string().min(16),
+    JWT_SECRET: z.string().min(16).default(DEFAULT_JWT_SECRET),
     JWT_REFRESH_SECRET: z.string().min(16).optional(),
     API_INTERNAL_URL: z.string().url().optional(),
     DEMO_LOGIN_ENABLED: z.enum(["true", "false"]).optional(),
@@ -43,7 +45,7 @@ export const env = createEnv({
    * middlewares) or client-side so we need to destruct manually.
    */
   runtimeEnv: {
-    JWT_SECRET: process.env.JWT_SECRET,
+    JWT_SECRET: process.env.JWT_SECRET || DEFAULT_JWT_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     API_INTERNAL_URL: process.env.API_INTERNAL_URL,
     DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED,

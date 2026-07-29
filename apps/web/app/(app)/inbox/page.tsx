@@ -433,7 +433,7 @@ export default function InboxPage() {
   const [demoSummarizeEnabled, setDemoSummarizeEnabled] = useState(false);
   const demoCacheQuery = trpc.inbox.listCachedThreads.useQuery({ limit: 50 }, { staleTime: 120_000 });
   const hasDemoFixtures =
-    isDemoLoginEnabled() && !isConnected && (demoCacheQuery.data?.threads.length ?? 0) > 0;
+    (isDemoUser || isDemoLoginEnabled()) && !isConnected;
   const canBrowseInbox = isConnected || hasDemoFixtures;
 
   const approveQueueItem = trpc.queue.approve.useMutation({

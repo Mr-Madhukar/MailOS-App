@@ -7,17 +7,33 @@ export function sanitizeProxiedSetCookie(setCookie: string): string {
     .join("; ");
 }
 
-export function appendProxiedSetCookies(response: Headers, upstream: Headers) {
-  const setCookies =
-    typeof upstream.getSetCookie === "function" ? upstream.getSetCookie() : [];
-
-  if (setCookies.length > 0) {
-    for (const setCookie of setCookies) {
-      response.append("set-cookie", sanitizeProxiedSetCookie(setCookie));
+export function appendProxiedSetCookies(
+  response: Headers,
+  upstream: Headers | Record<string, string | string[] | undefined>,
+) {
+  if (upstream && "getSetCookie" in upstream && typeof upstream.getSetCookie === "function") {
+    const setCookies = upstream.getSetCookie();
+    if (setCookies.length > 0) {
+      for (const setCookie of setCookies) {
+        response.append("set-cookie", sanitizeProxiedSetCookie(setCookie));
+      }
+      return;
     }
+  }
+
+  if (upstream && "get" in upstream && typeof upstream.get === "function") {
+    const single = (upstream as Headers).get("set-cookie");
+    if (single) response.set("set-cookie", sanitizeProxiedSetCookie(single));
     return;
   }
 
-  const single = upstream.get("set-cookie");
-  if (single) response.set("set-cookie", sanitizeProxiedSetCookie(single));
+  // Fallback for Node.js http.IncomingHttpHeaders object
+  const nodeCookies = (upstream as Record<string, string | string[] | undefined>)?.["set-cookie"];
+  if (Array.isArray(nodeCookies)) {
+    for (const cookie of nodeCookies) {
+      response.append("set-cookie", sanitizeProxiedSetCookie(cookie));
+    }
+  } else if (typeof nodeCookies === "string") {
+    response.set("set-cookie", sanitizeProxiedSetCookie(nodeCookies));
+  }
 }

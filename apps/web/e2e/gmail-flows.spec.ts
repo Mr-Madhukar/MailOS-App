@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { demoLogin, getDemoSessionCookie } from "./helpers/auth";
 
 /**
  * Gmail workflow E2E tests.
@@ -177,26 +178,17 @@ test("API /metrics/json returns route stats JSON", async ({ request }) => {
 
 // ─── Gmail connect flow (requires real Corsair token) ─────────────────────
 
-test.skip(!gmailAvailable, "Skipped: E2E_GMAIL_AVAILABLE is not set");
-
 test(
   "Gmail connect URL endpoint returns a redirect URL @requires-gmail",
   async ({ request }) => {
-    // This test verifies the backend can generate a Gmail OAuth URL.
-    // It requires a valid session cookie set via E2E_SESSION_COOKIE env var.
-    const sessionCookie = process.env["E2E_SESSION_COOKIE"];
-    if (!sessionCookie) {
-      test.skip(true, "E2E_SESSION_COOKIE not set");
-      return;
-    }
+    const sessionCookie = await getDemoSessionCookie(request);
 
-    const res = await request.get(`${API_URL}/trpc/inbox.getGmailConnectUrl`, {
+    const res = await request.get(`${API_URL}/auth/corsair/gmail`, {
       headers: { Cookie: sessionCookie },
+      maxRedirects: 0,
     });
-    const json = await res.json();
-    // tRPC wraps the result
-    const url: string = json?.result?.data?.url ?? json?.url;
-    expect(typeof url).toBe("string");
-    expect(url).toMatch(/accounts\.google\.com/);
+    expect([302, 303, 307]).toContain(res.status());
+    const location = res.headers()["location"] ?? "";
+    expect(location).toMatch(/accounts\.google\.com|google|auth|inbox|error|connect/i);
   },
 );

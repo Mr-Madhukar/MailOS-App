@@ -32,7 +32,7 @@ const queueItemSchema = z.object({
 export const queueRouter = router({
   pendingCount: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/pending-count"), tags: TAGS } })
-    .input(z.object({}))
+    .input(z.object({}).passthrough().optional())
     .output(z.object({ count: z.number().int() }))
     .query(async ({ ctx }) => {
       try {

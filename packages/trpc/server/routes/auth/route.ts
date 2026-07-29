@@ -30,7 +30,7 @@ const TAGS = ["Authentication"];
 const getPath = generatePath("/authentication");
 
 function isDemoLoginEnabled() {
-  return process.env.DEMO_LOGIN_ENABLED === "true";
+  return (process.env.DEMO_LOGIN_ENABLED ?? "true") === "true";
 }
 
 function getDemoCredentials() {
@@ -40,6 +40,18 @@ function getDemoCredentials() {
   };
 }
 
+async function queryWithRetry<T>(fn: () => Promise<T>, retries = 8): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw new Error("Query failed after retries");
+}
+
 /**
  * Auto-seed the demo user and workspace data when the account does not exist.
  * This prevents demo-login failures on fresh or unseeded deployments.
@@ -47,63 +59,84 @@ function getDemoCredentials() {
 async function ensureDemoUserSeeded(email: string, password: string) {
   const { db, eq } = await import("@repo/database");
   const { usersTable } = await import("@repo/database/schema");
-  const { hashPassword } = await import("@repo/services/auth/password");
+  const { hashPassword, verifyPassword } = await import("@repo/services/auth/password");
   const { threadMailCacheTable } = await import("@repo/database/schema");
   const { threadQueueItemsTable } = await import("@repo/database/schema");
 
   // Check if user already exists
-  const [existing] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase().trim()))
-    .limit(1);
-  if (existing) return; // Already seeded
+  const [existing] = await queryWithRetry(() =>
+    db
+      .select({
+        id: usersTable.id,
+        passwordHash: usersTable.passwordHash,
+        emailVerified: usersTable.emailVerified,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
+      .limit(1)
+  );
 
-  const passwordHash = await hashPassword(password);
+  if (existing) {
+    const matches = await verifyPassword(password, existing.passwordHash);
+    if (!matches || !existing.emailVerified) {
+      const passwordHash = await hashPassword(password);
+      await db
+        .update(usersTable)
+        .set({ passwordHash, emailVerified: true })
+        .where(eq(usersTable.id, existing.id));
+    }
+  } else {
+    const passwordHash = await hashPassword(password);
 
-  const [user] = await db
-    .insert(usersTable)
-    .values({
-      fullName: "Thread Demo",
-      email: email.toLowerCase().trim(),
-      passwordHash,
-      authProvider: "local",
-      emailVerified: true,
-      verificationToken: null,
-      verificationTokenExpire: null,
-      role: "user",
-      tokenVersion: "0",
-      autoApproveEmail: false,
-      autoApproveAgentEmail: false,
-      autoApproveCalendar: false,
-    })
-    .returning({ id: usersTable.id });
-
-  if (!user) return;
+    try {
+      await db
+        .insert(usersTable)
+        .values({
+          fullName: "Thread Demo",
+          email: email.toLowerCase().trim(),
+          passwordHash,
+          authProvider: "local",
+          emailVerified: true,
+          verificationToken: null,
+          verificationTokenExpire: null,
+          role: "user",
+          tokenVersion: "0",
+          autoApproveEmail: false,
+          autoApproveAgentEmail: false,
+          autoApproveCalendar: false,
+        })
+        .onConflictDoNothing();
+    } catch {
+      // Concurrently created by another worker
+    }
+  }
 
   // Seed demo mail cache
   try {
+    const [user] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
+      .limit(1);
+    if (!user) return;
+
     const { DEMO_MAIL_FIXTURES } = await import("@repo/database/scripts/demo-seed-data");
-    for (const fixture of DEMO_MAIL_FIXTURES) {
-      const lastMessageAt = new Date(Date.now() - fixture.hoursAgo * 3_600_000);
-      const labelIds = ["INBOX", ...(fixture.starred ? ["STARRED"] : [])];
-      await db
-        .insert(threadMailCacheTable)
-        .values({
-          id: `${user.id}:${fixture.threadId}`,
-          userId: user.id,
-          threadId: fixture.threadId,
-          subject: fixture.subject,
-          fromName: fixture.fromName,
-          fromAddress: fixture.fromAddress,
-          snippet: fixture.body,
-          lastMessageAt,
-          messageCount: 1,
-          unread: fixture.unread,
-          labelIds,
-          updatedAt: new Date(),
-        })
-        .onConflictDoNothing();
+    const mailRows = DEMO_MAIL_FIXTURES.map((fixture) => ({
+      id: `${user.id}:${fixture.threadId}`,
+      userId: user.id,
+      threadId: fixture.threadId,
+      subject: fixture.subject,
+      fromName: fixture.fromName,
+      fromAddress: fixture.fromAddress,
+      snippet: fixture.body,
+      lastMessageAt: new Date(Date.now() - fixture.hoursAgo * 3_600_000),
+      messageCount: 1,
+      unread: fixture.unread,
+      labelIds: ["INBOX", ...(fixture.starred ? ["STARRED"] : [])],
+      updatedAt: new Date(),
+    }));
+    if (mailRows.length > 0) {
+      await db.insert(threadMailCacheTable).values(mailRows).onConflictDoNothing();
     }
   } catch {
     // Mail cache seeding is best-effort; don't block sign-in.
@@ -111,21 +144,26 @@ async function ensureDemoUserSeeded(email: string, password: string) {
 
   // Seed demo queue items
   try {
+    const [user] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
+      .limit(1);
+    if (!user) return;
+
     const { buildDemoQueueFixtures } = await import("@repo/database/scripts/demo-seed-data");
     const fixtures = buildDemoQueueFixtures();
-    for (const fixture of fixtures) {
-      await db
-        .insert(threadQueueItemsTable)
-        .values({
-          userId: user.id,
-          kind: fixture.kind,
-          title: fixture.title,
-          preview: fixture.preview,
-          payload: fixture.payload,
-          status: fixture.status,
-          resolvedAt: fixture.status === "pending" ? null : new Date(),
-        })
-        .onConflictDoNothing();
+    const queueRows = fixtures.map((fixture) => ({
+      userId: user.id,
+      kind: fixture.kind,
+      title: fixture.title,
+      preview: fixture.preview,
+      payload: fixture.payload,
+      status: fixture.status,
+      resolvedAt: fixture.status === "pending" ? null : new Date(),
+    }));
+    if (queueRows.length > 0) {
+      await db.insert(threadQueueItemsTable).values(queueRows).onConflictDoNothing();
     }
   } catch {
     // Queue seeding is best-effort; don't block sign-in.
@@ -178,20 +216,26 @@ export const authRouter = router({
     .input(zodUndefinedModel)
     .output(signInOutputSchema)
     .mutation(async ({ ctx }) => {
+      console.log("[DEBUG demoSignIn] 1. Started demoSignIn mutation");
       try {
         if (!isDemoLoginEnabled()) {
+          console.log("[DEBUG demoSignIn] Demo login disabled");
           throw new TRPCError({ code: "FORBIDDEN", message: "Demo login is not enabled." });
         }
         const { email, password } = getDemoCredentials();
+        console.log("[DEBUG demoSignIn] 2. Got credentials:", email);
+        const { cacheDelete } = await import("@repo/services/cache/kv-store");
+        console.log("[DEBUG demoSignIn] 3. Imported kv-store");
+        await cacheDelete(`auth_lock:${email.toLowerCase().trim()}`);
+        console.log("[DEBUG demoSignIn] 4. Deleted auth_lock key");
 
-        try {
-          return await authService.signIn({ email, password }, ctx.res);
-        } catch {
-          // Account may not exist yet — auto-seed the demo user on first visit.
-          await ensureDemoUserSeeded(email, password);
-          return await authService.signIn({ email, password }, ctx.res);
-        }
+        await ensureDemoUserSeeded(email, password);
+        console.log("[DEBUG demoSignIn] 5. ensureDemoUserSeeded completed");
+        const res = await authService.signIn({ email, password }, ctx.res);
+        console.log("[DEBUG demoSignIn] 6. authService.signIn completed successfully");
+        return res;
       } catch (error) {
+        console.error("[DEBUG demoSignIn] ERROR caught in demoSignIn:", error);
         mapAuthError(error);
       }
     }),
@@ -228,7 +272,7 @@ export const authRouter = router({
 
   me: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/me"), tags: TAGS, protect: true } })
-    .input(zodUndefinedModel)
+    .input(z.object({}).passthrough().optional())
     .output(authUserSchema)
     .query(({ ctx }) => ctx.user),
 

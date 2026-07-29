@@ -15,8 +15,7 @@ test("landing page renders the product hero and primary nav", async ({ page }) =
 
 test("protected app routes redirect unauthenticated users to sign-in", async ({ page }) => {
   await page.goto("/inbox");
-  await page.waitForURL(/\/sign-in/, { timeout: 15_000 });
-  expect(page.url()).toContain("/sign-in");
+  await expect(page).toHaveURL(/\/sign-in/, { timeout: 15_000 });
 });
 
 test("sign-in page is reachable and shows the email field", async ({ page }) => {

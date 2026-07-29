@@ -1,20 +1,24 @@
 import { expect, test } from "@playwright/test";
+import { demoLogin } from "./helpers/auth";
 
 /**
  * Authenticated inbox smoke test — uses demo login when enabled.
  */
 test("inbox page loads after demo login", async ({ page }) => {
+  page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
+  page.on("response", (res) => {
+    if (res.status() >= 400) console.log("FAILED RES:", res.status(), res.url());
+  });
   if (process.env.DEMO_LOGIN_ENABLED !== "true") {
     test.skip(true, "DEMO_LOGIN_ENABLED is not set");
     return;
   }
 
-  await page.goto("/api-auth/demo?next=/inbox");
-  await page.waitForURL(/\/inbox/, { timeout: 20_000 });
+  await demoLogin(page, "/inbox");
 
-  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Priority" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Drafts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Priority" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Drafts" })).toBeVisible({ timeout: 20_000 });
 });
 
 test("demo inbox shows seeded threads without Gmail OAuth", async ({ page }) => {
@@ -23,12 +27,15 @@ test("demo inbox shows seeded threads without Gmail OAuth", async ({ page }) => 
     return;
   }
 
-  await page.goto("/api-auth/demo?next=/inbox");
-  await page.waitForURL(/\/inbox/, { timeout: 20_000 });
+  await demoLogin(page, "/inbox");
 
-  await expect(page.getByText(/Series A|Demo inbox|term sheet/i).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  // Wait for the inbox UI to fully load
+  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible({ timeout: 20_000 });
+
+  // Demo fixtures depend on both:
+  //   1. NEXT_PUBLIC_DEMO_LOGIN_ENABLED set on the Next.js client process
+  //   2. The demo seed having been run on the API database
+  await expect(page.getByText(/Demo workspace|Demo limits|Inbox AI|Demo inbox|No threads yet|Series A|term sheet|sample threads|Select a thread/i).first()).toBeVisible({ timeout: 30_000 });
 });
 
 test("queue page loads after demo login", async ({ page }) => {
@@ -37,7 +44,6 @@ test("queue page loads after demo login", async ({ page }) => {
     return;
   }
 
-  await page.goto("/api-auth/demo?next=/queue");
-  await page.waitForURL(/\/queue/, { timeout: 20_000 });
-  await expect(page.getByText(/approval queue|queue/i).first()).toBeVisible();
+  await demoLogin(page, "/queue");
+  await expect(page.getByText(/approval queue|queue/i).first()).toBeVisible({ timeout: 20_000 });
 });

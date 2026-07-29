@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { appendProxiedSetCookies } from "~/lib/proxied-set-cookie";
+function getApiBase() {
+  const url = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
+  return url.trim().replace(/\/$/, "");
+}
 
-const API_BASE = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
-
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const ATTEMPTS = 3;
@@ -14,19 +16,24 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
   const headers = new Headers();
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
-  const cookie = request.headers.get("cookie");
-  if (cookie) headers.set("cookie", cookie);
+
+  const requestCookies = request.cookies.getAll();
+  const cookieHeader =
+    requestCookies.length > 0
+      ? requestCookies.map((c) => `${c.name}=${c.value}`).join("; ")
+      : request.headers.get("cookie");
+
+  if (cookieHeader) headers.set("cookie", cookieHeader);
+
   const origin = request.headers.get("origin");
   if (origin) headers.set("origin", origin);
   const referer = request.headers.get("referer");
   if (referer) headers.set("referer", referer);
-  if (cookie && request.method !== "GET" && request.method !== "HEAD") {
+  if (cookieHeader && request.method !== "GET" && request.method !== "HEAD") {
     headers.set("x-thread-csrf", "1");
   }
   const accept = request.headers.get("accept");
   if (accept) headers.set("accept", accept);
-  // Request identity encoding — avoids length/header mismatches when re-proxied through Vercel.
-  // break browsers with ERR_CONTENT_DECODING_FAILED when re-proxied through Vercel.
   headers.set("accept-encoding", "identity");
   return headers;
 }
@@ -35,7 +42,9 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
 async function proxyTrpc(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const pathname = path.join("/");
-  const upstream = `${API_BASE}/trpc/${pathname}${request.nextUrl.search}`;
+  const apiBase = getApiBase();
+  const upstream = `${apiBase}/trpc/${pathname}${request.nextUrl.search}`;
+  console.log("[TRPC PROXY ROUTE] url:", upstream, "cookies:", request.cookies.getAll().map((c) => `${c.name}=${c.value}`));
   const headers = buildUpstreamHeaders(request);
 
   const body =
@@ -123,7 +132,42 @@ async function proxyTrpc(request: NextRequest, context: { params: Promise<{ path
   response.headers.set("Cache-Control", "no-store, no-transform");
   response.headers.delete("content-encoding");
 
-  appendProxiedSetCookies(response.headers, upstreamRes.headers);
+  const rawSetCookie = upstreamRes.headers.get("set-cookie");
+  if (rawSetCookie) {
+    const setCookieHeaders = rawSetCookie.split(/,\s*(?=[a-zA-Z0-9_ -]+=)/);
+    for (const headerStr of setCookieHeaders) {
+      const parts = headerStr.split(";").map((p) => p.trim());
+      const firstPart = parts[0];
+      if (!firstPart) continue;
+      const eqIdx = firstPart.indexOf("=");
+      if (eqIdx === -1) continue;
+      const name = firstPart.substring(0, eqIdx).trim();
+      const value = firstPart.substring(eqIdx + 1).trim();
+
+      let httpOnly = false;
+      let path = "/";
+      let maxAge: number | undefined;
+
+      for (const p of parts.slice(1)) {
+        if (!p) continue;
+        if (/^httponly$/i.test(p)) httpOnly = true;
+        if (/^path=/i.test(p)) path = p.substring(5).trim();
+        if (/^max-age=/i.test(p)) {
+          const parsed = Number.parseInt(p.substring(8).trim(), 10);
+          if (!Number.isNaN(parsed)) maxAge = parsed;
+        }
+      }
+
+      response.cookies.set({
+        name,
+        value,
+        httpOnly,
+        path,
+        ...(maxAge !== undefined ? { maxAge } : {}),
+        sameSite: "lax",
+      });
+    }
+  }
   return response;
 }
 

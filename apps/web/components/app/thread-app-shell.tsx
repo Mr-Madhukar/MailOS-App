@@ -71,11 +71,12 @@ export function ThreadAppShell({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    console.log("[THREAD APP SHELL] isLoading:", isLoading, "isError:", isError, "user:", user);
     if (!isLoading && isError) {
       const next = encodeURIComponent(pathname || "/inbox");
       router.replace(`/sign-in?next=${next}`);
     }
-  }, [isLoading, isError, pathname, router]);
+  }, [isLoading, isError, user, pathname, router]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

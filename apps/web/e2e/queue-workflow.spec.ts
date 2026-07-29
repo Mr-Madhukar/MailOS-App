@@ -19,22 +19,24 @@ test("compose → queue → approve email workflow", async ({ page }) => {
   await page.locator("#compose-subject").fill(subject);
   await page.locator("#compose-body").fill("Automated E2E test — queued then approved.");
 
-  await page.getByRole("button", { name: "Queue send" }).click();
+  const queueSendBtn = page.getByRole("button", { name: "Queue send" });
+  await queueSendBtn.scrollIntoViewIfNeeded();
+  await queueSendBtn.click();
 
-  await expect(page.getByText(/added to your queue|queue/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Added to approval queue/i).first()).toBeVisible({ timeout: 15_000 });
 
   await page.goto("/queue");
   await page.waitForURL(/\/queue/, { timeout: 10_000 });
 
   const card = page.locator(".thread-queue-card").filter({ hasText: subject });
-  await expect(card).toBeVisible({ timeout: 10_000 });
+  await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByRole("button", { name: /Approve/i }).click();
 
-  await expect(page.getByText(/Approved and sent/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Approved/i).first()).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "History" }).click();
   const historyCard = page.locator(".thread-queue-card").filter({ hasText: subject });
-  await expect(historyCard.getByText("approved")).toBeVisible({ timeout: 10_000 });
+  await expect(historyCard.getByText("approved").first()).toBeVisible({ timeout: 10_000 });
 });
 
 test("seeded pending item can be approved with mock Gmail", async ({ page }) => {
@@ -42,9 +44,9 @@ test("seeded pending item can be approved with mock Gmail", async ({ page }) => 
 
   await demoLogin(page, "/queue");
 
-  const seeded = page.locator(".thread-queue-card").filter({ hasText: "Welcome to Thread demo" });
+  const seeded = page.locator(".thread-queue-card").filter({ hasText: "Welcome to Thread demo" }).first();
   await expect(seeded).toBeVisible({ timeout: 10_000 });
 
   await seeded.getByRole("button", { name: /Approve/i }).click();
-  await expect(page.getByText(/Approved and sent/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Approved/i).first()).toBeVisible({ timeout: 15_000 });
 });

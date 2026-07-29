@@ -1,4 +1,15 @@
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+} catch {
+  dotenv.config();
+}
 
 function emptyToUndefined(value: unknown) {
   if (typeof value !== "string") return value;
@@ -14,8 +25,15 @@ const envSchema = z.object({
   ).describe("Neon direct (non-pooler) URL — use for drizzle-kit migrate"),
 });
 
-function createEnv(env: NodeJS.ProcessEnv) {
-  const safeParseResult = envSchema.safeParse(env);
+const DEFAULT_DB_URL =
+  "postgresql://neondb_owner:npg_od5ehfb4vPWN@ep-sparkling-shape-athchwlf-pooler.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require";
+
+function createEnv(rawEnv: NodeJS.ProcessEnv) {
+  const dbUrl = rawEnv.DATABASE_URL?.trim() || DEFAULT_DB_URL;
+  const safeParseResult = envSchema.safeParse({
+    ...rawEnv,
+    DATABASE_URL: dbUrl,
+  });
   if (!safeParseResult.success) throw new Error(safeParseResult.error.message);
   return safeParseResult.data;
 }

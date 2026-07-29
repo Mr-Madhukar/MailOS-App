@@ -58,7 +58,8 @@
     "OTEL_SERVICE_NAME",
     "E2E_GMAIL_AVAILABLE",
     "E2E_SESSION_COOKIE",
-    "DOCS_SECRET"
+    "DOCS_SECRET",
+    "PLAYWRIGHT_TEST_BASE_URL"
   ],
   "tasks": {
     "build": {

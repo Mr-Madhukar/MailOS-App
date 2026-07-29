@@ -8,11 +8,12 @@ export function isNeonDatabase(connectionString: string) {
 }
 
 export function pgConnectionConfig(connectionString: string): pg.ClientConfig {
-  const config: pg.ClientConfig = { connectionString };
+  const cleanUrl = connectionString.replace(/[?&]channel_binding=[^&]*/gi, "");
+  const config: pg.ClientConfig = { connectionString: cleanUrl };
 
   if (
-    isNeonDatabase(connectionString) ||
-    /sslmode=(require|verify-full|verify-ca)/i.test(connectionString)
+    isNeonDatabase(cleanUrl) ||
+    /sslmode=(require|verify-full|verify-ca)/i.test(cleanUrl)
   ) {
     config.ssl = { rejectUnauthorized: false };
   }
@@ -26,9 +27,13 @@ export function getMigrationDatabaseUrl() {
 }
 
 export function createPgPool(connectionString = env.DATABASE_URL) {
+  const config = pgConnectionConfig(connectionString);
   return new pg.Pool({
-    ...pgConnectionConfig(connectionString),
-    max: isNeonDatabase(connectionString) ? 5 : 10,
+    ...config,
+    max: isNeonDatabase(connectionString) ? 10 : 20,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 30_000,
+    keepAlive: true,
   });
 }
 

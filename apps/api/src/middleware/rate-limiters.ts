@@ -3,7 +3,11 @@ import type { Request, Response, NextFunction } from "express";
 import { checkDistributedRateLimit } from "@repo/services/cache/rate-limit";
 import { authService } from "@repo/trpc/server/services";
 
-const skipInTests = () => process.env.VITEST === "true";
+const skipInTests = () =>
+  process.env.VITEST === "true" ||
+  process.env.NODE_ENV === "test" ||
+  process.env.PLAYWRIGHT === "true" ||
+  process.env.CI === "true";
 
 type LimitConfig = {
   windowMs: number;

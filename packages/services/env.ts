@@ -27,7 +27,7 @@ function loadRootEnv() {
 loadRootEnv();
 
 const envSchema = z.object({
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: z.string().min(16).default("1eee83f12d4ad0387532f6dc38689a9b7129eeb34a046e03f44c320cafe8965a"),
   JWT_REFRESH_SECRET: z.string().min(16).optional(),
   CLIENT_URL: z.string().default("http://localhost:3000"),
   NODE_ENV: z.enum(["development", "production", "prod", "test"]).default("development"),

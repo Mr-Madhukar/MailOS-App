@@ -19,6 +19,7 @@ export const createTRPCHttpBatchClientClient = (opts?: CreateTRPCHttpBatchClient
 
       const headers = new Headers(options?.headers);
       headers.set("Accept-Encoding", "identity");
+      headers.set("x-thread-csrf", "1");
 
       return fetch(url, {
         ...options,
