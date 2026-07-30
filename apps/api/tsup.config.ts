@@ -1,18 +1,21 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "tsup";
+import { defineConfig, type Options } from "tsup";
 
 const apiRoot = path.dirname(fileURLToPath(import.meta.url));
 const corsairImportsEsm = path.join(apiRoot, "src/corsair-imports-esm.ts");
 
-const shared = {
-  splitting: false as const,
+const shared: Options = {
+  splitting: false,
   bundle: true,
   env: { IS_SERVER_BUILD: "true" },
-  loader: { ".json": "copy" as const },
+  loader: { ".json": "copy" },
   minify: false,
   sourcemap: false,
-  target: "es2022" as const,
+  target: "es2022",
+  esbuildOptions(options) {
+    options.logOverride = { "empty-import-meta": "silent" };
+  },
 };
 
 export default defineConfig([
