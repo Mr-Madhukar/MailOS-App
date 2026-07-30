@@ -59,7 +59,8 @@
     "E2E_GMAIL_AVAILABLE",
     "E2E_SESSION_COOKIE",
     "DOCS_SECRET",
-    "PLAYWRIGHT_TEST_BASE_URL"
+    "PLAYWRIGHT_TEST_BASE_URL",
+    "PLAYWRIGHT"
   ],
   "tasks": {
     "build": {

@@ -20,9 +20,9 @@ const inboxMessageSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   date: z.string().optional(),
-  body: z.string().nullable().optional().transform((v) => v ?? ""),
+  body: z.preprocess((v) => v ?? "", z.string()),
   bodyHtml: z.string().optional(),
-  snippet: z.string().nullable().optional().transform((v) => v ?? ""),
+  snippet: z.preprocess((v) => v ?? "", z.string()),
   attachments: z
     .array(
       z.object({
@@ -37,7 +37,7 @@ const inboxMessageSchema = z.object({
 
 const inboxThreadSchema = z.object({
   id: z.string(),
-  snippet: z.string().nullable().optional().transform((v) => v ?? ""),
+  snippet: z.preprocess((v) => v ?? "", z.string()),
   historyId: z.string().optional(),
   subject: z.string().optional(),
   from: z.string().optional(),

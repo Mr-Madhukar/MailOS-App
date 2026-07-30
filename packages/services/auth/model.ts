@@ -5,10 +5,10 @@ import { userRoleSchema } from "./roles";
 export const authUserSchema = z.object({
   id: z.string(),
   fullName: z.string(),
-  displayName: z.string().nullable().optional().transform((v) => v ?? null),
+  displayName: z.preprocess((v) => v ?? null, z.string().nullable()),
   email: z.string().email(),
   emailVerified: z.boolean(),
-  profileImageUrl: z.string().nullable().optional().transform((v) => v ?? null),
+  profileImageUrl: z.preprocess((v) => v ?? null, z.string().nullable()),
   twoFactorEnabled: z.boolean(),
   role: userRoleSchema,
 });

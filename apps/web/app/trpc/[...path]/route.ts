@@ -29,7 +29,7 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
   if (origin) headers.set("origin", origin);
   const referer = request.headers.get("referer");
   if (referer) headers.set("referer", referer);
-  if (cookieHeader && request.method !== "GET" && request.method !== "HEAD") {
+  if (cookieHeader) {
     headers.set("x-thread-csrf", "1");
   }
   const accept = request.headers.get("accept");

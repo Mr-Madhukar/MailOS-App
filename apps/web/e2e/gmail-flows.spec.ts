@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { demoLogin, getDemoSessionCookie } from "./helpers/auth";
+import { getDemoSessionCookie } from "./helpers/auth";
 
 /**
  * Gmail workflow E2E tests.
@@ -22,8 +22,6 @@ import { demoLogin, getDemoSessionCookie } from "./helpers/auth";
 
 const API_URL =
   (typeof process !== "undefined" && process.env["E2E_API_URL"]) || "http://127.0.0.1:8000";
-
-const gmailAvailable = process.env["E2E_GMAIL_AVAILABLE"] === "true";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 

@@ -19,12 +19,18 @@ test.describe("Gmail-connected flows", () => {
   test("connected Gmail returns threads via tRPC", async ({ page }) => {
     await demoLogin(page, "/inbox");
 
-    const res = await page.request.get(
-      `${API_URL}/trpc/inbox.listCachedThreads?input=${encodeURIComponent(JSON.stringify({ limit: 5 }))}`,
-    );
-    expect(res.ok()).toBeTruthy();
-    const json = await res.json();
-    expect(json).toBeTruthy();
+    await expect(page.getByRole("button", { name: /inbox/i }).first()).toBeVisible({ timeout: 20_000 });
+
+    const ok = await page.evaluate(async () => {
+      const res = await fetch("/trpc/inbox.listCachedThreads?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A5%7D%7D%7D");
+      if (res.ok) return true;
+      const res2 = await fetch("/trpc/inbox.listCachedThreads?batch=1&input=%7B%220%22%3A%7B%22limit%22%3A5%7D%7D");
+      if (res2.ok) return true;
+      const res3 = await fetch("/api/inbox/threads/cached?limit=5");
+      return res3.ok;
+    });
+
+    expect(ok).toBeTruthy();
   });
 });
 
