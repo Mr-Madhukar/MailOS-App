@@ -30,27 +30,50 @@ export default defineConfig({
   ],
   webServer: process.env.PLAYWRIGHT_TEST_BASE_URL
     ? undefined
-    : {
-        command: "node scripts/start-e2e-servers.mjs",
-        cwd: "../..",
-        url: `${apiURL}/health`,
-        reuseExistingServer: true,
-        timeout: 120_000,
-        env: {
-          ...process.env,
-          NODE_ENV: "test",
-          PLAYWRIGHT: "true",
-          API_INTERNAL_URL: apiURL,
-          CLIENT_URL: baseURL,
-          BASE_URL: apiURL,
-          DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
-          NEXT_PUBLIC_DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
-          THREAD_E2E_MOCK_GMAIL: process.env.THREAD_E2E_MOCK_GMAIL ?? "true",
-          DEMO_USER_EMAIL: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev",
-          DEMO_USER_PASSWORD:
-            process.env.DEMO_USER_PASSWORD ?? process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!",
+    : [
+        {
+          command: "pnpm --filter @repo/api dev",
+          cwd: "../..",
+          url: `${apiURL}/health`,
+          reuseExistingServer: true,
+          timeout: 120_000,
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            PLAYWRIGHT: "true",
+            API_INTERNAL_URL: apiURL,
+            CLIENT_URL: baseURL,
+            BASE_URL: apiURL,
+            DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
+            NEXT_PUBLIC_DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
+            THREAD_E2E_MOCK_GMAIL: process.env.THREAD_E2E_MOCK_GMAIL ?? "true",
+            DEMO_USER_EMAIL: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev",
+            DEMO_USER_PASSWORD:
+              process.env.DEMO_USER_PASSWORD ?? process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!",
+          },
         },
-      },
+        {
+          command: "pnpm --filter web dev",
+          cwd: "../..",
+          url: `${baseURL}`,
+          reuseExistingServer: true,
+          timeout: 120_000,
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            PLAYWRIGHT: "true",
+            API_INTERNAL_URL: apiURL,
+            CLIENT_URL: baseURL,
+            BASE_URL: apiURL,
+            DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
+            NEXT_PUBLIC_DEMO_LOGIN_ENABLED: process.env.DEMO_LOGIN_ENABLED ?? "true",
+            THREAD_E2E_MOCK_GMAIL: process.env.THREAD_E2E_MOCK_GMAIL ?? "true",
+            DEMO_USER_EMAIL: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@mailos.dev",
+            DEMO_USER_PASSWORD:
+              process.env.DEMO_USER_PASSWORD ?? process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!",
+          },
+        },
+      ],
   metadata: {
     apiURL,
   },
