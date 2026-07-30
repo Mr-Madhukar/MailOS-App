@@ -10,7 +10,9 @@ function loadRootEnv() {
   const currentDir =
     typeof __dirname !== "undefined"
       ? __dirname
-      : path.dirname(fileURLToPath(import.meta.url));
+      : typeof import.meta !== "undefined" && import.meta.url
+        ? path.dirname(fileURLToPath(import.meta.url))
+        : process.cwd();
   let dir = currentDir;
   for (let i = 0; i < 6; i++) {
     const envPath = path.join(dir, ".env");

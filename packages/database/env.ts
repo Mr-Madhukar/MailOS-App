@@ -3,13 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-try {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-} catch {
-  dotenv.config();
-}
+const currentDir =
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : typeof import.meta !== "undefined" && import.meta.url
+      ? path.dirname(fileURLToPath(import.meta.url))
+      : process.cwd();
+
+dotenv.config({ path: path.resolve(currentDir, "../../.env") });
 
 function emptyToUndefined(value: unknown) {
   if (typeof value !== "string") return value;

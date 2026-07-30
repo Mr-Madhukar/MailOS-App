@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 const currentFilename =
   typeof __filename !== "undefined"
     ? __filename
-    : fileURLToPath(import.meta.url);
+    : typeof import.meta !== "undefined" && import.meta.url
+      ? fileURLToPath(import.meta.url)
+      : "";
 const corsairRequire = createRequire(currentFilename);
 
 function loadCorsairModule<T>(subpath: string): T {

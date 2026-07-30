@@ -2,9 +2,14 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+const currentDir =
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : typeof import.meta !== "undefined" && import.meta.url
+      ? path.dirname(fileURLToPath(import.meta.url))
+      : process.cwd();
+
+dotenv.config({ path: path.resolve(currentDir, "../../../.env") });
 
 // OpenTelemetry MUST be imported first — before any instrumented modules.
 import { initTracing } from "./tracing";

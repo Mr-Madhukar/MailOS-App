@@ -12,7 +12,9 @@ function resolveMigrationsFolder(): string {
   const currentDir =
     typeof __dirname !== "undefined"
       ? __dirname
-      : path.dirname(fileURLToPath(import.meta.url));
+      : typeof import.meta !== "undefined" && import.meta.url
+        ? path.dirname(fileURLToPath(import.meta.url))
+        : process.cwd();
 
   const candidates = [
     path.join(process.cwd(), "packages/database/drizzle"),
