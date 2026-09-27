@@ -7,7 +7,7 @@ console.log("Connecting to:", connectionString ? connectionString.split('@')[1] 
 
 const pool = new Pool({
   connectionString,
-  ssl: connectionString && connectionString.includes('neon.tech') ? { rejectUnauthorized: false } : false
+  ssl: connectionString?.includes('neon.tech') ? { rejectUnauthorized: false } : false
 });
 
 async function main() {

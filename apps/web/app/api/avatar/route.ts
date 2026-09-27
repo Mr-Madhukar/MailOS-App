@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 async function fetchPhoto(url: string) {
   const response = await fetch(url, {

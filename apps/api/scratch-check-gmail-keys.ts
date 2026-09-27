@@ -8,7 +8,7 @@ dotenv.config({ path: '../../.env' });
 const connectionString = process.env.DATABASE_URL;
 const pool = new pg.Pool({
   connectionString,
-  ssl: connectionString && connectionString.includes('neon.tech') ? { rejectUnauthorized: false } : false
+  ssl: connectionString?.includes('neon.tech') ? { rejectUnauthorized: false } : false
 });
 
 const kek = process.env.CORSAIR_KEK!.trim();
@@ -42,4 +42,11 @@ async function main() {
   }
 }
 
-main().catch(console.error).finally(() => pool.end());
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+} finally {
+  await pool.end();
+}
+

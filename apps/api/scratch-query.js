@@ -8,7 +8,7 @@ console.log("Connecting to:", connectionString ? connectionString.split('@')[1] 
 
 const pool = new Pool({
   connectionString,
-  ssl: connectionString && connectionString.includes('neon.tech') ? { rejectUnauthorized: false } : false
+  ssl: connectionString?.includes('neon.tech') ? { rejectUnauthorized: false } : false
 });
 
 async function main() {
@@ -40,4 +40,11 @@ async function main() {
   }
 }
 
-main().catch(console.error).finally(() => pool.end());
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+} finally {
+  await pool.end();
+}
+

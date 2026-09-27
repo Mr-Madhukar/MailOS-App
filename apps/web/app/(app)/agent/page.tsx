@@ -131,8 +131,8 @@ function agentWelcomeCopy(opts: {
   if (opts.agentAutoApprove) {
     return (
       <>
-        Ask in plain language — e.g. &quot;Email hr@company.com that I was sick 29–30 May&quot;.
-        <strong> Auto-approve is on</strong> for agent emails: I&apos;ll send via Gmail right away.
+        Ask in plain language — e.g. &quot;Email hr@company.com that I was sick 29–30 May&quot;.{" "}
+        <strong>Auto-approve is on</strong> for agent emails: I&apos;ll send via Gmail right away.
         {opts.calendarAutoApprove ? " Calendar invites also send immediately." : " Calendar invites still go to Queue first."}
       </>
     );
@@ -140,10 +140,96 @@ function agentWelcomeCopy(opts: {
 
   return (
     <>
-      Ask in plain language — e.g. &quot;Draft an email to hr@company.com about sick leave 29–30 May&quot;.
-      <strong> Queue first</strong> is on for agent emails: I&apos;ll draft and add to{" "}
+      Ask in plain language — e.g. &quot;Draft an email to hr@company.com about sick leave 29–30 May&quot;.{" "}
+      <strong>Queue first</strong> is on for agent emails: I&apos;ll draft and add to{" "}
       <strong>Queue</strong> — nothing sends until you approve.
     </>
+  );
+}
+
+interface ActionPanelProps {
+  readonly actions: readonly ActionCard[];
+  readonly agentAutoApprove: boolean;
+  readonly onQueueResolved?: () => void;
+  readonly userEmail?: string | null;
+}
+
+function ActionPanelEmpty({ agentAutoApprove }: { readonly agentAutoApprove: boolean }) {
+  return (
+    <div className="thread-agent-pane">
+      <div className="thread-agent-pane-head">
+        <CheckCircle2 size={14} style={{ opacity: 0.55 }} />
+        Actions
+      </div>
+      <div className="thread-agent-feed" style={{ justifyContent: "center" }}>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--thread-muted)", lineHeight: 1.55, textAlign: "center" }}>
+          {agentAutoApprove ? (
+            <>
+              Agent emails and calendar actions can run immediately when{" "}
+              <strong style={{ color: "var(--thread-text)" }}>Auto-approve</strong> is on in Settings.
+            </>
+          ) : (
+            <>
+              Drafts, sends, and calendar invites go to{" "}
+              <strong style={{ color: "var(--thread-text)" }}>Queue</strong> for your approval first.
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface QueuedActionBannerProps {
+  readonly queuedAction: ActionCard;
+  readonly queueItemStillPending: boolean;
+  readonly isPending: boolean;
+  readonly onApprove: () => void;
+  readonly onDismiss: () => void;
+}
+
+function QueuedActionBanner({
+  queuedAction,
+  queueItemStillPending,
+  isPending,
+  onApprove,
+  onDismiss,
+}: QueuedActionBannerProps) {
+  return (
+    <div className="thread-inbox-banner" style={{ marginTop: 4 }}>
+      <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
+        {queueItemStillPending
+          ? "Waiting in Queue — approve here or review all items."
+          : "This item was already processed — open Queue for details."}
+      </p>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        {queueItemStillPending && queuedAction.queueItemId ? (
+          <>
+            <button
+              type="button"
+              className="thread-btn-accent"
+              style={{ fontSize: 12, padding: "6px 12px" }}
+              disabled={isPending}
+              onClick={onApprove}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              className="thread-btn-ghost"
+              style={{ fontSize: 12, padding: "6px 12px" }}
+              disabled={isPending}
+              onClick={onDismiss}
+            >
+              Dismiss
+            </button>
+          </>
+        ) : null}
+        <Link href="/queue" className="thread-inbox-loadmore" style={{ display: "inline-flex" }}>
+          Open Queue
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -152,12 +238,7 @@ function ActionPanel({
   agentAutoApprove,
   onQueueResolved,
   userEmail,
-}: {
-  actions: ActionCard[];
-  agentAutoApprove: boolean;
-  onQueueResolved?: () => void;
-  userEmail?: string | null;
-}) {
+}: ActionPanelProps) {
   const utils = trpc.useUtils();
   const { checkBeforeApprove, showRequirementFromError, modal: connectModal } =
     useQueueIntegrationGate(userEmail);
@@ -189,32 +270,10 @@ function ActionPanel({
   });
 
   if (actions.length === 0) {
-    return (
-      <div className="thread-agent-pane">
-        <div className="thread-agent-pane-head">
-          <CheckCircle2 size={14} style={{ opacity: 0.55 }} />
-          Actions
-        </div>
-        <div className="thread-agent-feed" style={{ justifyContent: "center" }}>
-          <p style={{ margin: 0, fontSize: 13, color: "var(--thread-muted)", lineHeight: 1.55, textAlign: "center" }}>
-            {agentAutoApprove ? (
-              <>
-                Agent emails and calendar actions can run immediately when{" "}
-                <strong style={{ color: "var(--thread-text)" }}>Auto-approve</strong> is on in Settings.
-              </>
-            ) : (
-              <>
-                Drafts, sends, and calendar invites go to{" "}
-                <strong style={{ color: "var(--thread-text)" }}>Queue</strong> for your approval first.
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-    );
+    return <ActionPanelEmpty agentAutoApprove={agentAutoApprove} />;
   }
 
-  const latest = actions.find((a) => a.kind === "inbox_ranked" || a.kind === "inbox_search") ?? actions[actions.length - 1]!;
+  const latest = actions.find((a) => a.kind === "inbox_ranked" || a.kind === "inbox_search") ?? actions.at(-1)!;
   const queuedAction = [...actions]
     .reverse()
     .find(
@@ -264,42 +323,14 @@ function ActionPanel({
             </span>
           </div>
         ))}
-        {queuedAction &&
-        queuedAction.disposition === "queued" ? (
-          <div className="thread-inbox-banner" style={{ marginTop: 4 }}>
-            <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-              {queueItemStillPending
-                ? "Waiting in Queue — approve here or review all items."
-                : "This item was already processed — open Queue for details."}
-            </p>
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {queueItemStillPending && queuedAction.queueItemId ? (
-                <>
-                  <button
-                    type="button"
-                    className="thread-btn-accent"
-                    style={{ fontSize: 12, padding: "6px 12px" }}
-                    disabled={approve.isPending || dismiss.isPending}
-                    onClick={handleApproveQueued}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="thread-btn-ghost"
-                    style={{ fontSize: 12, padding: "6px 12px" }}
-                    disabled={approve.isPending || dismiss.isPending}
-                    onClick={() => dismiss.mutate({ id: queuedAction.queueItemId! })}
-                  >
-                    Dismiss
-                  </button>
-                </>
-              ) : null}
-              <Link href="/queue" className="thread-inbox-loadmore" style={{ display: "inline-flex" }}>
-                Open Queue
-              </Link>
-            </div>
-          </div>
+        {queuedAction?.disposition === "queued" ? (
+          <QueuedActionBanner
+            queuedAction={queuedAction}
+            queueItemStillPending={queueItemStillPending}
+            isPending={approve.isPending || dismiss.isPending}
+            onApprove={handleApproveQueued}
+            onDismiss={() => dismiss.mutate({ id: queuedAction.queueItemId! })}
+          />
         ) : null}
         {(latest.kind === "email_queued" || latest.kind === "calendar_queued") &&
         latest.disposition === "sent" ? (
@@ -322,6 +353,102 @@ function ActionPanel({
     </>
   );
 }
+
+interface AgentStreamData {
+  readonly label?: string;
+  readonly text?: string;
+  readonly reply?: string;
+  readonly actions?: ActionCard[];
+  readonly toolMemory?: ToolMemoryEntry[];
+  readonly focusCleared?: boolean;
+  readonly message?: string;
+}
+
+function parseSseLine(
+  line: string,
+  currentEvent: string,
+): { nextEvent: string; item?: { event: string; data: AgentStreamData } } {
+  if (line.startsWith("event: ")) {
+    return { nextEvent: line.slice(7).trim() };
+  }
+  if (line.startsWith("data: ")) {
+    const dataStr = line.slice(6).trim();
+    try {
+      const data = JSON.parse(dataStr) as AgentStreamData;
+      return { nextEvent: "", item: { event: currentEvent, data } };
+    } catch {
+      return { nextEvent: "" };
+    }
+  }
+  return { nextEvent: currentEvent };
+}
+
+async function* parseSseStream(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<{ event: string; data: AgentStreamData }> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const result = parseSseLine(line, currentEvent);
+      currentEvent = result.nextEvent;
+      if (result.item) {
+        yield result.item;
+      }
+    }
+  }
+}
+
+function syncBriefDismissals(
+  actions: ActionCard[],
+  focusedThreadId?: string,
+  urlThreadId?: string,
+) {
+  dismissBriefThreadsFromAgentActions(actions);
+  if (!focusedThreadId) return;
+  const matchesThread = actions.some(
+    (a) =>
+      a.kind === "email_queued" ||
+      (a.kind === "thread" && Boolean(urlThreadId && a.href?.includes(urlThreadId))),
+  );
+  if (matchesThread) {
+    dismissBriefThread(focusedThreadId);
+  }
+}
+
+function getAgentStatusTag(opts: {
+  approvalSettingsReady: boolean;
+  agentAutoApprove: boolean;
+  ready: boolean;
+  model?: string;
+}): string {
+  if (opts.approvalSettingsReady) {
+    return opts.agentAutoApprove ? "Auto-approve · agent" : "Queue first · agent";
+  }
+  if (opts.ready) {
+    return opts.model ?? "gpt-4o-mini";
+  }
+  return "OpenAI required";
+}
+
+function getApprovalDataAttr(
+  approvalSettingsReady: boolean,
+  agentAutoApprove: boolean,
+): "on" | "off" | undefined {
+  if (!approvalSettingsReady) return undefined;
+  return agentAutoApprove ? "on" : "off";
+}
+
 
 function AgentPageContent() {
   const searchParams = useSearchParams();
@@ -508,6 +635,34 @@ function AgentPageContent() {
     toast.message("Stopped.");
   };
 
+  const handleStreamComplete = (data: AgentStreamData) => {
+    const reply = data.reply ?? "";
+    const actions = data.actions ?? [];
+    const nextToolMemory = data.toolMemory ?? toolMemory;
+
+    setMessages((prev) => {
+      const last = prev.at(-1);
+      if (last?.role === "assistant") {
+        return [...prev.slice(0, -1), { role: "assistant", content: reply }];
+      }
+      return [...prev, { role: "assistant", content: reply }];
+    });
+    setLastActions(actions);
+    setToolMemory(nextToolMemory);
+    if (data.focusCleared) {
+      setFocus({});
+    }
+    setStreamStatus(null);
+    syncBriefDismissals(actions, focus.threadId ?? urlThreadId, urlThreadId);
+
+    void utils.agent.listSessions.invalidate();
+    if (activeSessionId) {
+      void utils.agent.getSession.invalidate({ id: activeSessionId });
+    }
+    void utils.queue.pendingCount.invalidate();
+    void utils.ai.dailyBrief.invalidate();
+  };
+
   const send = (text: string): boolean => {
     const message = text.trim();
     if (!message || isPending || !activeSessionId) return false;
@@ -554,83 +709,22 @@ function AgentPageContent() {
           throw new Error((err as { error?: string }).error ?? "Agent request failed");
         }
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          let currentEvent = "";
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              const dataStr = line.slice(6).trim();
-              try {
-                const data = JSON.parse(dataStr) as Record<string, unknown>;
-                if (currentEvent === "status") {
-                  setStreamStatus(String(data.label ?? "Working…"));
-                } else if (currentEvent === "token") {
-                  const tokenText = String(data.text ?? "");
-                  setMessages((prev) => {
-                    const last = prev[prev.length - 1];
-                    if (last?.role === "assistant") {
-                      return [...prev.slice(0, -1), { role: "assistant", content: last.content + tokenText }];
-                    }
-                    return [...prev, { role: "assistant", content: tokenText }];
-                  });
-                } else if (currentEvent === "complete") {
-                  const reply = String(data.reply ?? "");
-                  const actions = (data.actions as ActionCard[]) ?? [];
-                  const nextToolMemory = (data.toolMemory as ToolMemoryEntry[]) ?? toolMemory;
-                  const focusCleared = Boolean(data.focusCleared);
-
-                  setMessages((prev) => {
-                    const last = prev[prev.length - 1];
-                    if (last?.role === "assistant") {
-                      return [...prev.slice(0, -1), { role: "assistant", content: reply }];
-                    }
-                    return [...prev, { role: "assistant", content: reply }];
-                  });
-                  setLastActions(actions);
-                  setToolMemory(nextToolMemory);
-                  if (focusCleared) {
-                    setFocus({});
-                  }
-                  setStreamStatus(null);
-                  dismissBriefThreadsFromAgentActions(actions);
-
-                  const focusedThreadId = focus.threadId ?? urlThreadId;
-                  if (
-                    focusedThreadId &&
-                    actions.some(
-                      (a) =>
-                        a.kind === "email_queued" ||
-                        (a.kind === "thread" && a.href?.includes(urlThreadId)),
-                    )
-                  ) {
-                    dismissBriefThread(focusedThreadId);
-                  }
-
-                  void utils.agent.listSessions.invalidate();
-                  void utils.agent.getSession.invalidate({ id: activeSessionId });
-                  void utils.queue.pendingCount.invalidate();
-                  void utils.ai.dailyBrief.invalidate();
-                } else if (currentEvent === "error") {
-                  throw new Error(String(data.message ?? "Agent error"));
-                }
-              } catch (parseErr) {
-                if (parseErr instanceof SyntaxError) continue;
-                throw parseErr;
+        for await (const { event, data } of parseSseStream(res.body)) {
+          if (event === "status") {
+            setStreamStatus(data.label ?? "Working…");
+          } else if (event === "token") {
+            const tokenText = data.text ?? "";
+            setMessages((prev) => {
+              const last = prev.at(-1);
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { role: "assistant", content: last.content + tokenText }];
               }
-              currentEvent = "";
-            }
+              return [...prev, { role: "assistant", content: tokenText }];
+            });
+          } else if (event === "complete") {
+            handleStreamComplete(data);
+          } else if (event === "error") {
+            throw new Error(data.message ?? "Agent error");
           }
         }
       })
@@ -691,6 +785,15 @@ function AgentPageContent() {
     await persistFocus(next);
   };
 
+  const agentStatusTag = getAgentStatusTag({
+    approvalSettingsReady,
+    agentAutoApprove,
+    ready,
+    model: status.data?.model,
+  });
+
+  const approvalDataAttr = getApprovalDataAttr(approvalSettingsReady, agentAutoApprove);
+
   return (
     <div className="thread-app-page">
       {demoModal}
@@ -708,13 +811,7 @@ function AgentPageContent() {
               <Bot size={14} style={{ opacity: 0.7 }} />
               Thread Agent
               <span className="thread-mono-tag" style={{ marginLeft: "auto" }}>
-                {approvalSettingsReady
-                  ? agentAutoApprove
-                    ? "Auto-approve · agent"
-                    : "Queue first · agent"
-                  : ready
-                    ? status.data?.model ?? "gpt-4o-mini"
-                    : "OpenAI required"}
+                {agentStatusTag}
               </span>
               {isPending ? (
                 <button
@@ -759,7 +856,7 @@ function AgentPageContent() {
               {messages.length === 0 && !status.isLoading && linkParamsReady && !preparingDeepLink ? (
                 <div
                   className="thread-rotator-bubble"
-                  data-approval={approvalSettingsReady ? (agentAutoApprove ? "on" : "off") : undefined}
+                  data-approval={approvalDataAttr}
                   style={{ fontSize: 13, maxWidth: "100%" }}
                 >
                   <Bot size={13} style={{ opacity: 0.6, flexShrink: 0 }} />

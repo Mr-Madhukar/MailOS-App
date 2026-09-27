@@ -17,7 +17,7 @@ test("compose → queue → approve email workflow", async ({ page }) => {
 
   await page.locator("#compose-to").fill("workflow@thread.dev");
   await page.locator("#compose-subject").fill(subject);
-  await page.locator("#compose-body").fill("Automated E2E test — queued then approved.");
+  await page.locator("#compose-body").fill("Automated E2E test — queued to send.");
 
   const queueSendBtn = page.getByRole("button", { name: "Queue send" });
   await queueSendBtn.scrollIntoViewIfNeeded();

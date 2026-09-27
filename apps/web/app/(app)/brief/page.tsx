@@ -55,13 +55,13 @@ function urgencyColor(urgency?: BriefItem["urgency"]) {
 
 function BriefSection({
   title, icon: Icon, children, empty, badge,
-}: {
+}: Readonly<{
   title: string;
   icon: typeof Sun;
   children: React.ReactNode;
   empty?: boolean;
   badge?: number;
-}) {
+}>) {
   if (empty) return null;
   return (
     <section className="thread-brief-section">
@@ -85,7 +85,7 @@ function BriefItemRow({
   onToggleEvent,
   onDismissThread,
   timeZone,
-}: {
+}: Readonly<{
   item: BriefItem;
   expandedId: string | null;
   expandedEventId: string | null;
@@ -93,7 +93,7 @@ function BriefItemRow({
   onToggleEvent: (id: string | null) => void;
   onDismissThread?: (threadId: string) => void;
   timeZone: string;
-}) {
+}>) {
   const router = useRouter();
   const isThreadExpanded = Boolean(item.threadId && expandedId === item.threadId);
   const isEventExpanded = Boolean(item.eventId && expandedEventId === item.eventId);
@@ -196,10 +196,10 @@ function BriefItemRow({
 function FollowUpRow({
   item,
   onDraft,
-}: {
+}: Readonly<{
   item: FollowUp;
   onDraft: (prompt: string) => void;
-}) {
+}>) {
   const eventDate = item.eventDate
     ? new Date(item.eventDate).toLocaleDateString(undefined, {
         weekday: "short",
@@ -359,11 +359,11 @@ function BriefActionButton({
   action,
   preview,
   onRun,
-}: {
+}: Readonly<{
   action: BriefAction;
   preview: { headline: string; detail?: string; label: string } | null;
   onRun: () => void;
-}) {
+}>) {
   return (
     <div className="thread-brief-action-wrap">
       <button
@@ -394,6 +394,48 @@ function BriefActionButton({
   );
 }
 
+function handleReplyAction(
+  action: BriefAction,
+  router: ReturnType<typeof useRouter>,
+  threadId: string | undefined,
+  brief: DailyBrief | null | undefined,
+  target: ReturnType<typeof resolveBriefThreadTarget> | null,
+) {
+  if (action.agentPrompt) {
+    router.push(briefAgentUrl(action.agentPrompt, threadId));
+    return;
+  }
+  if (brief && target) {
+    router.push(
+      briefAgentUrl(
+        buildBriefAgentPrompt(action.kind, target.headline, target.detail, action),
+        threadId,
+      ),
+    );
+    return;
+  }
+  router.push(
+    briefAgentUrl(
+      "Read my priority email and draft a reply. Queue the email for my approval before sending.",
+    ),
+  );
+}
+
+function handlePrepareMeetingAction(
+  action: BriefAction,
+  router: ReturnType<typeof useRouter>,
+) {
+  if (action.eventId) {
+    router.push(`/calendar?event=${encodeURIComponent(action.eventId)}`);
+    return;
+  }
+  if (action.agentPrompt) {
+    router.push(briefAgentUrl(action.agentPrompt, action.threadId));
+    return;
+  }
+  router.push("/calendar");
+}
+
 function runBriefAction(
   action: BriefAction,
   router: ReturnType<typeof useRouter>,
@@ -405,42 +447,16 @@ function runBriefAction(
   const target = brief ? resolveBriefThreadTarget(action, brief, threadCtxMap) : null;
   const threadId = action.threadId ?? target?.threadId ?? brief?.todaysFocus.threadId;
 
-  if (threadId) onDismissThread?.(threadId);
-  else if (action.threadId) onDismissThread?.(action.threadId);
+  const dismissTarget = threadId ?? action.threadId;
+  if (dismissTarget) onDismissThread?.(dismissTarget);
 
   switch (action.kind) {
     case "reply":
-    case "follow_up": {
-      if (action.agentPrompt) {
-        router.push(briefAgentUrl(action.agentPrompt, threadId));
-        return;
-      }
-      if (brief && target) {
-        router.push(
-          briefAgentUrl(
-            buildBriefAgentPrompt(action.kind, target.headline, target.detail, action),
-            threadId,
-          ),
-        );
-        return;
-      }
-      router.push(
-        briefAgentUrl(
-          "Read my priority email and draft a reply. Queue the email for my approval before sending.",
-        ),
-      );
+    case "follow_up":
+      handleReplyAction(action, router, threadId, brief, target);
       return;
-    }
     case "prepare_meeting":
-      if (action.eventId) {
-        router.push(`/calendar?event=${encodeURIComponent(action.eventId)}`);
-        return;
-      }
-      if (action.agentPrompt) {
-        router.push(briefAgentUrl(action.agentPrompt, action.threadId));
-        return;
-      }
-      router.push("/calendar");
+      handlePrepareMeetingAction(action, router);
       return;
     case "agent":
       if (action.agentPrompt) {
@@ -449,23 +465,18 @@ function runBriefAction(
       }
       break;
     case "open_queue":
-      router.push("/queue"); return;
+      router.push("/queue");
+      return;
     case "open_inbox":
-      router.push("/inbox"); return;
+      router.push("/inbox");
+      return;
   }
   router.push("/agent");
 }
 
-export default function BriefPage() {
-  const router = useRouter();
-  const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
-
-  // Inline expansion state
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
-
-  // "While you were away" detection via localStorage
+function useAwayHours() {
   const [awayHours, setAwayHours] = useState<number | null>(null);
+
   useEffect(() => {
     try {
       const key = "thread_last_active";
@@ -481,13 +492,15 @@ export default function BriefPage() {
     }
   }, []);
 
-  // Server-persisted dismissals — merged with localStorage for instant optimistic UI.
+  return awayHours;
+}
+
+function useBriefDismissals(brief: DailyBrief | undefined) {
   const [dismissedThreadIds, setDismissedThreadIds] = useState<Set<string>>(() => getDismissedBriefThreadIds());
 
   const dismissalsQuery = trpc.ai.getBriefDismissals.useQuery({}, { staleTime: 60_000 });
   const serverDismissMutation = trpc.ai.dismissBriefThread.useMutation();
 
-  // Merge server dismissals into local state whenever the query resolves.
   useEffect(() => {
     if (!dismissalsQuery.data) return;
     setDismissedThreadIds((prev) => {
@@ -497,7 +510,6 @@ export default function BriefPage() {
     });
   }, [dismissalsQuery.data]);
 
-  // Re-sync from localStorage on focus (cross-tab support).
   useEffect(() => {
     const syncLocal = () => {
       const local = getDismissedBriefThreadIds();
@@ -515,32 +527,443 @@ export default function BriefPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!brief) return;
+    const stillActive = new Set(
+      brief.needsAttention.map((i) => i.threadId).filter(Boolean) as string[],
+    );
+    pruneBriefDismissals(stillActive);
+    const local = getDismissedBriefThreadIds();
+    setDismissedThreadIds((prev) => {
+      const merged = new Set(local);
+      for (const id of prev) merged.add(id);
+      return merged;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brief?.generatedAt, brief?.needsAttention]);
+
   const markBriefThreadDismissed = (threadId: string) => {
-    // Optimistic local update + localStorage for cross-tab
     dismissBriefThread(threadId);
     setDismissedThreadIds((prev) => new Set([...prev, threadId]));
-    // Persist to DB in background
     serverDismissMutation.mutate({ threadId });
   };
 
+  return { dismissedThreadIds, markBriefThreadDismissed };
+}
+
+function filterDismissedItems<T extends { threadId?: string }>(
+  items: T[] | undefined,
+  dismissed: Set<string>,
+): T[] {
+  if (!items) return [];
+  return items.filter((item) => !item.threadId || !dismissed.has(item.threadId));
+}
+
+function getWorkspaceConnectionState(
+  gmailStatus: string | undefined,
+  calendarStatus: string | undefined,
+  cachedThreadsCount: number,
+  hasBriefData: boolean,
+) {
+  const connected = gmailStatus === "connected" || calendarStatus === "connected";
+  const hasDemoData = isDemoLoginEnabled() && cachedThreadsCount > 0;
+  const canShowBrief = connected || hasDemoData || hasBriefData;
+  const showDemoStrip = !connected && hasDemoData;
+  return { connected, hasDemoData, canShowBrief, showDemoStrip };
+}
+
+function BriefHeader({
+  isFetching,
+  isRefreshing,
+  onRefresh,
+}: Readonly<{
+  isFetching: boolean;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}>) {
+  const isBusy = isFetching || isRefreshing;
+  return (
+    <header className="thread-brief-header">
+      <div className="thread-brief-header-main">
+        <Sun size={18} style={{ opacity: 0.75 }} />
+        <div>
+          <h1>Daily Brief</h1>
+          <p>Your plan for today — what matters and what to do first.</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        className="thread-btn-ghost"
+        disabled={isBusy}
+        title="Force-refresh from Gmail + Calendar (bypasses 5-min cache)"
+        onClick={onRefresh}
+      >
+        {isBusy ? (
+          <Loader2 size={13} className="thread-spin" />
+        ) : (
+          <RefreshCw size={13} />
+        )}
+        Refresh
+      </button>
+    </header>
+  );
+}
+
+function ConnectWorkspaceEmptyState() {
+  return (
+    <div className="thread-app-empty thread-brief-empty">
+      <Mail size={22} style={{ opacity: 0.35 }} />
+      <h2>Connect your workspace</h2>
+      <p>Link Gmail or Google Calendar to generate your personal daily brief.</p>
+      <Link href="/settings" className="thread-btn-accent">Open Settings</Link>
+    </div>
+  );
+}
+
+function BriefErrorState({
+  message,
+  onRetry,
+}: Readonly<{
+  message: string;
+  onRetry: () => void;
+}>) {
+  return (
+    <div className="thread-app-empty thread-brief-empty">
+      <AlertTriangle size={22} style={{ opacity: 0.45, color: "#f87171" }} />
+      <h2>Couldn&apos;t load your brief</h2>
+      <p>{message}</p>
+      <button type="button" className="thread-btn-accent" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
+function TodaysFocusCard({
+  brief,
+  briefThreadContext,
+  onDismissThread,
+}: Readonly<{
+  brief: DailyBrief;
+  briefThreadContext: Map<string, { headline: string; detail?: string }>;
+  onDismissThread: (threadId: string) => void;
+}>) {
+  const focusTarget = resolveBriefThreadTarget(null, brief, briefThreadContext);
+  const canReply = Boolean(focusTarget.threadId || brief.todaysFocus.headline);
+  const focusPrompt = canReply
+    ? buildBriefAgentPrompt(
+        "reply",
+        focusTarget.headline,
+        focusTarget.detail,
+        { id: "focus", label: "Reply now", kind: "reply" },
+      )
+    : "";
+
+  return (
+    <div className="thread-brief-focus-card">
+      <div className="thread-brief-focus-label">
+        <Target size={14} />
+        Today&apos;s focus
+      </div>
+      <h3>{brief.todaysFocus.headline}</h3>
+      {brief.todaysFocus.detail ? <p>{brief.todaysFocus.detail}</p> : null}
+      {brief.todaysFocus.byTime ? (
+        <span className="thread-mono-tag">{brief.todaysFocus.byTime}</span>
+      ) : null}
+      <div className="thread-brief-focus-actions">
+        {canReply ? (
+          <Link
+            href={briefAgentUrl(focusPrompt, focusTarget.threadId)}
+            className="thread-btn-accent"
+            onClick={() => {
+              if (focusTarget.threadId) onDismissThread(focusTarget.threadId);
+            }}
+          >
+            Reply now
+          </Link>
+        ) : null}
+        {brief.todaysFocus.eventId ? (
+          <Link href={`/calendar?event=${encodeURIComponent(brief.todaysFocus.eventId)}`} className="thread-btn-ghost">
+            View meeting
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function BriefFollowUpsSection({
+  followUps,
+  isLoading,
+  isError,
+  onRetry,
+  onDraft,
+}: Readonly<{
+  followUps: FollowUp[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  onDraft: (prompt: string) => void;
+}>) {
+  if (followUps.length > 0) {
+    return (
+      <section className="thread-brief-section thread-brief-followups-section">
+        <div className="thread-brief-section-head">
+          <MessageSquare size={14} />
+          <h2>Missed follow-ups</h2>
+          <span className="thread-brief-badge thread-brief-badge--amber">{followUps.length}</span>
+        </div>
+        <div className="thread-brief-section-body">
+          {followUps.map((fu) => (
+            <FollowUpRow
+              key={fu.eventId}
+              item={fu}
+              onDraft={onDraft}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--thread-dim)", margin: "4px 0 12px" }}>
+        <Loader2 size={12} className="thread-spin" />
+        Checking for missed follow-ups…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--thread-dim)", margin: "4px 0 12px" }}>
+        Couldn&apos;t check follow-ups.{" "}
+        <button type="button" style={{ color: "var(--thread-accent)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }} onClick={onRetry}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function DailyBriefView({
+  brief,
+  awayHours,
+  followUps,
+  followUpsLoading,
+  followUpsError,
+  onRetryFollowUps,
+  onDraftFollowUp,
+  visibleNeedsAttention,
+  visibleRisks,
+  visibleRecommendedActions,
+  expandedId,
+  expandedEventId,
+  onToggle,
+  onToggleEvent,
+  onDismissThread,
+  timeZone,
+  briefThreadContext,
+  briefEventContext,
+  onRunAction,
+}: Readonly<{
+  brief: DailyBrief;
+  awayHours: number | null;
+  followUps: FollowUp[];
+  followUpsLoading: boolean;
+  followUpsError: boolean;
+  onRetryFollowUps: () => void;
+  onDraftFollowUp: (prompt: string) => void;
+  visibleNeedsAttention: BriefItem[];
+  visibleRisks: BriefItem[];
+  visibleRecommendedActions: BriefAction[];
+  expandedId: string | null;
+  expandedEventId: string | null;
+  onToggle: (id: string | null) => void;
+  onToggleEvent: (id: string | null) => void;
+  onDismissThread: (threadId: string) => void;
+  timeZone: string;
+  briefThreadContext: Map<string, { headline: string; detail?: string }>;
+  briefEventContext: Map<string, { headline: string; detail?: string }>;
+  onRunAction: (action: BriefAction) => void;
+}>) {
+  const highUrgencyCount = visibleNeedsAttention.filter((i) => i.urgency === "high").length;
+
+  return (
+    <>
+      {awayHours != null ? (
+        <div className="thread-brief-away-banner">
+          <Timer size={14} />
+          <span>
+            You were away for <strong>{awayHours} hour{awayHours === 1 ? "" : "s"}</strong>
+            {" "}— here&apos;s what needs your attention.
+          </span>
+        </div>
+      ) : null}
+
+      <div className="thread-brief-hero">
+        <p className="thread-brief-greeting">{brief.greeting}</p>
+        <p className="thread-brief-summary">{brief.summary}</p>
+      </div>
+
+      <TodaysFocusCard
+        brief={brief}
+        briefThreadContext={briefThreadContext}
+        onDismissThread={onDismissThread}
+      />
+
+      {brief.focusWindow ? (
+        <div className="thread-brief-banner">
+          <Clock size={14} />
+          <span>{brief.focusWindow.label}</span>
+        </div>
+      ) : null}
+
+      <BriefFollowUpsSection
+        followUps={followUps}
+        isLoading={followUpsLoading}
+        isError={followUpsError}
+        onRetry={onRetryFollowUps}
+        onDraft={onDraftFollowUp}
+      />
+
+      <div className="thread-brief-grid">
+        <BriefSection
+          title="Needs attention"
+          icon={Mail}
+          empty={visibleNeedsAttention.length === 0}
+          badge={highUrgencyCount > 0 ? highUrgencyCount : undefined}
+        >
+          {visibleNeedsAttention.map((item) => (
+            <BriefItemRow
+              key={`need-${item.threadId ?? item.headline}`}
+              item={item}
+              expandedId={expandedId}
+              expandedEventId={expandedEventId}
+              onToggle={onToggle}
+              onToggleEvent={onToggleEvent}
+              onDismissThread={onDismissThread}
+              timeZone={timeZone}
+            />
+          ))}
+        </BriefSection>
+
+        <BriefSection
+          title="Meeting insights"
+          icon={Calendar}
+          empty={brief.meetingInsights.length === 0}
+        >
+          {brief.meetingInsights.map((item) => (
+            <BriefItemRow
+              key={`meet-${item.eventId ?? item.headline}`}
+              item={item}
+              expandedId={expandedId}
+              expandedEventId={expandedEventId}
+              onToggle={onToggle}
+              onToggleEvent={onToggleEvent}
+              timeZone={timeZone}
+            />
+          ))}
+        </BriefSection>
+
+        <BriefSection title="Risks" icon={AlertTriangle} empty={visibleRisks.length === 0}>
+          {visibleRisks.map((item) => (
+            <BriefItemRow
+              key={`risk-${item.threadId ?? item.headline}`}
+              item={item}
+              expandedId={expandedId}
+              expandedEventId={expandedEventId}
+              onToggle={onToggle}
+              onToggleEvent={onToggleEvent}
+              onDismissThread={onDismissThread}
+              timeZone={timeZone}
+            />
+          ))}
+        </BriefSection>
+      </div>
+
+      {visibleRecommendedActions.length > 0 ? (
+        <section className="thread-brief-actions">
+          <div className="thread-brief-section-head">
+            <Sparkles size={14} />
+            <h2>Recommended</h2>
+          </div>
+          <div className="thread-brief-action-row">
+            {visibleRecommendedActions.map((action) => (
+              <BriefActionButton
+                key={action.id}
+                action={action}
+                preview={actionPreview(action, brief, briefThreadContext, briefEventContext)}
+                onRun={() => onRunAction(action)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+function BriefBody({
+  loading,
+  canShowBrief,
+  errorMessage,
+  brief,
+  onRetryBrief,
+  children,
+}: Readonly<{
+  loading: boolean;
+  canShowBrief: boolean;
+  errorMessage?: string;
+  brief: DailyBrief | undefined;
+  onRetryBrief: () => void;
+  children: React.ReactNode;
+}>) {
+  if (loading) {
+    return <SkeletonList count={5} />;
+  }
+  if (!canShowBrief) {
+    return <ConnectWorkspaceEmptyState />;
+  }
+  if (errorMessage && !brief) {
+    return <BriefErrorState message={errorMessage} onRetry={onRetryBrief} />;
+  }
+  if (!brief) {
+    return null;
+  }
+  return <>{children}</>;
+}
+
+export default function BriefPage() {
+  const router = useRouter();
+  const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [isForceRefreshing, setIsForceRefreshing] = useState(false);
-  const utils = trpc.useUtils();
-  const meQuery = trpc.auth.me.useQuery({});
-  const { isDemo: isDemoUser, tryFeature, modal: demoModal } = useDemoAiGuard(meQuery.data?.email, "mail");
+
+  const awayHours = useAwayHours();
+
   const briefQuery = trpc.ai.dailyBrief.useQuery(
     { timeZone },
     { staleTime: 60_000, refetchOnMount: "always", refetchOnWindowFocus: true, retry: 1 },
   );
 
+  const brief = briefQuery.data;
+  const { dismissedThreadIds, markBriefThreadDismissed } = useBriefDismissals(brief);
+
+  const utils = trpc.useUtils();
+  const meQuery = trpc.auth.me.useQuery({});
+  const { isDemo: isDemoUser, tryFeature, modal: demoModal } = useDemoAiGuard(meQuery.data?.email, "mail");
+
   const handleForceRefresh = async () => {
     if (isDemoUser && !tryFeature()) return;
     setIsForceRefreshing(true);
     try {
-      // Pass refresh:true to bypass the 5-min server-side cache and re-fetch
-      // live from Corsair Gmail + Calendar + OpenAI.
       const fresh = await utils.ai.dailyBrief.fetch({ timeZone, refresh: true });
-      // Push the fresh response into the normal (non-refresh) query's cache slot
-      // so briefQuery.data updates without a second round-trip.
       utils.ai.dailyBrief.setData({ timeZone }, fresh);
     } finally {
       setIsForceRefreshing(false);
@@ -555,54 +978,29 @@ export default function BriefPage() {
   const inboxStatus = trpc.inbox.connectionStatus.useQuery({});
   const calendarStatus = trpc.calendar.connectionStatus.useQuery({});
   const cachedThreadsQuery = trpc.inbox.listCachedThreads.useQuery({ limit: 1 }, { staleTime: 120_000 });
-  const connected =
-    inboxStatus.data?.gmail === "connected" ||
-    calendarStatus.data?.googlecalendar === "connected";
-  const hasDemoData = isDemoLoginEnabled() && (cachedThreadsQuery.data?.threads.length ?? 0) > 0;
-  const canShowBrief = connected || hasDemoData || Boolean(briefQuery.data);
 
-  const brief = briefQuery.data;
+  const { canShowBrief, showDemoStrip } = getWorkspaceConnectionState(
+    inboxStatus.data?.gmail,
+    calendarStatus.data?.googlecalendar,
+    cachedThreadsQuery.data?.threads.length ?? 0,
+    Boolean(briefQuery.data),
+  );
+
   const followUps = followUpsQuery.data ?? [];
   const loading = briefQuery.isLoading || inboxStatus.isLoading || calendarStatus.isLoading;
 
-  useEffect(() => {
-    if (!brief) return;
-    const stillActive = new Set(
-      brief.needsAttention.map((i) => i.threadId).filter(Boolean) as string[],
-    );
-    // Prune localStorage entries that are no longer in the brief
-    pruneBriefDismissals(stillActive);
-    // Re-read localStorage after pruning, then merge with server state
-    const local = getDismissedBriefThreadIds();
-    setDismissedThreadIds((prev) => {
-      const merged = new Set(local);
-      for (const id of prev) merged.add(id);
-      return merged;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brief?.generatedAt, brief?.needsAttention]);
-
   const visibleNeedsAttention = useMemo(
-    () =>
-      (brief?.needsAttention ?? []).filter(
-        (item) => !item.threadId || !dismissedThreadIds.has(item.threadId),
-      ),
+    () => filterDismissedItems(brief?.needsAttention, dismissedThreadIds),
     [brief?.needsAttention, dismissedThreadIds],
   );
 
   const visibleRisks = useMemo(
-    () =>
-      (brief?.risks ?? []).filter(
-        (item) => !item.threadId || !dismissedThreadIds.has(item.threadId),
-      ),
+    () => filterDismissedItems(brief?.risks, dismissedThreadIds),
     [brief?.risks, dismissedThreadIds],
   );
 
   const visibleRecommendedActions = useMemo(
-    () =>
-      (brief?.recommendedActions ?? []).filter(
-        (action) => !action.threadId || !dismissedThreadIds.has(action.threadId),
-      ),
+    () => filterDismissedItems(brief?.recommendedActions, dismissedThreadIds),
     [brief?.recommendedActions, dismissedThreadIds],
   );
 
@@ -623,33 +1021,15 @@ export default function BriefPage() {
     <div className="thread-app-page">
       {demoModal}
       <div className="thread-brief-page">
-        <header className="thread-brief-header">
-          <div className="thread-brief-header-main">
-            <Sun size={18} style={{ opacity: 0.75 }} />
-            <div>
-              <h1>Daily Brief</h1>
-              <p>Your plan for today — what matters and what to do first.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="thread-btn-ghost"
-            disabled={briefQuery.isFetching || isForceRefreshing}
-            title="Force-refresh from Gmail + Calendar (bypasses 5-min cache)"
-            onClick={() => {
-              void handleForceRefresh().then(() => toast.message("Brief refreshed from Corsair"));
-            }}
-          >
-            {briefQuery.isFetching || isForceRefreshing ? (
-              <Loader2 size={13} className="thread-spin" />
-            ) : (
-              <RefreshCw size={13} />
-            )}
-            Refresh
-          </button>
-        </header>
+        <BriefHeader
+          isFetching={briefQuery.isFetching}
+          isRefreshing={isForceRefreshing}
+          onRefresh={() => {
+            void handleForceRefresh().then(() => toast.message("Brief refreshed from Corsair"));
+          }}
+        />
 
-        {!connected && hasDemoData ? (
+        {showDemoStrip ? (
           <div className="thread-demo-inbox-strip" style={{ marginBottom: 16 }}>
             <Sparkles size={13} />
             <span>Demo Daily Brief — AI synthesis from sample inbox + calendar data</span>
@@ -658,202 +1038,39 @@ export default function BriefPage() {
           </div>
         ) : null}
 
-        {loading ? (
-          <SkeletonList count={5} />
-        ) : !canShowBrief ? (
-          <div className="thread-app-empty thread-brief-empty">
-            <Mail size={22} style={{ opacity: 0.35 }} />
-            <h2>Connect your workspace</h2>
-            <p>Link Gmail or Google Calendar to generate your personal daily brief.</p>
-            <Link href="/settings" className="thread-btn-accent">Open Settings</Link>
-          </div>
-        ) : briefQuery.isError && !briefQuery.data ? (
-          <div className="thread-app-empty thread-brief-empty">
-            <AlertTriangle size={22} style={{ opacity: 0.45, color: "#f87171" }} />
-            <h2>Couldn&apos;t load your brief</h2>
-            <p>{briefQuery.error.message}</p>
-            <button type="button" className="thread-btn-accent" onClick={() => briefQuery.refetch()}>
-              Try again
-            </button>
-          </div>
-        ) : brief ? (
-          <>
-            {/* While You Were Away banner */}
-            {awayHours != null ? (
-              <div className="thread-brief-away-banner">
-                <Timer size={14} />
-                <span>
-                  You were away for <strong>{awayHours} hour{awayHours === 1 ? "" : "s"}</strong>
-                  {" "}— here&apos;s what needs your attention.
-                </span>
-              </div>
-            ) : null}
-
-            <div className="thread-brief-hero">
-              <p className="thread-brief-greeting">{brief.greeting}</p>
-              <p className="thread-brief-summary">{brief.summary}</p>
-            </div>
-
-            <div className="thread-brief-focus-card">
-              <div className="thread-brief-focus-label">
-                <Target size={14} />
-                Today&apos;s focus
-              </div>
-              <h3>{brief.todaysFocus.headline}</h3>
-              {brief.todaysFocus.detail ? <p>{brief.todaysFocus.detail}</p> : null}
-              {brief.todaysFocus.byTime ? (
-                <span className="thread-mono-tag">{brief.todaysFocus.byTime}</span>
-              ) : null}
-              <div className="thread-brief-focus-actions">
-                {(() => {
-                  const focusTarget = resolveBriefThreadTarget(null, brief, briefThreadContext);
-                  if (!focusTarget.threadId && !brief.todaysFocus.headline) return null;
-                  const focusPrompt = buildBriefAgentPrompt(
-                    "reply",
-                    focusTarget.headline,
-                    focusTarget.detail,
-                    { id: "focus", label: "Reply now", kind: "reply" },
-                  );
-                  return (
-                    <Link
-                      href={briefAgentUrl(focusPrompt, focusTarget.threadId)}
-                      className="thread-btn-accent"
-                      onClick={() => {
-                        if (focusTarget.threadId) markBriefThreadDismissed(focusTarget.threadId);
-                      }}
-                    >
-                      Reply now
-                    </Link>
-                  );
-                })()}
-                {brief.todaysFocus.eventId ? (
-                  <Link href={`/calendar?event=${encodeURIComponent(brief.todaysFocus.eventId)}`} className="thread-btn-ghost">
-                    View meeting
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-
-            {brief.focusWindow ? (
-              <div className="thread-brief-banner">
-                <Clock size={14} />
-                <span>{brief.focusWindow.label}</span>
-              </div>
-            ) : null}
-
-            {/* Missed follow-ups — unique section */}
-            {followUps.length > 0 ? (
-              <section className="thread-brief-section thread-brief-followups-section">
-                <div className="thread-brief-section-head">
-                  <MessageSquare size={14} />
-                  <h2>Missed follow-ups</h2>
-                  <span className="thread-brief-badge thread-brief-badge--amber">{followUps.length}</span>
-                </div>
-                <div className="thread-brief-section-body">
-                  {followUps.map((fu) => (
-                    <FollowUpRow
-                      key={fu.eventId}
-                      item={fu}
-                      onDraft={handleDraftFollowUp}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : followUpsQuery.isLoading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--thread-dim)", margin: "4px 0 12px" }}>
-                <Loader2 size={12} className="thread-spin" />
-                Checking for missed follow-ups…
-              </div>
-            ) : followUpsQuery.isError ? (
-              <div style={{ fontSize: 12, color: "var(--thread-dim)", margin: "4px 0 12px" }}>
-                Couldn&apos;t check follow-ups.{" "}
-                <button type="button" style={{ color: "var(--thread-accent)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }} onClick={() => followUpsQuery.refetch()}>
-                  Retry
-                </button>
-              </div>
-            ) : null}
-
-            <div className="thread-brief-grid">
-              <BriefSection
-                title="Needs attention"
-                icon={Mail}
-                empty={visibleNeedsAttention.length === 0}
-                badge={visibleNeedsAttention.filter(i => i.urgency === "high").length || undefined}
-              >
-                {visibleNeedsAttention.map((item, i) => (
-                  <BriefItemRow
-                    key={`need-${item.threadId ?? i}`}
-                    item={item}
-                    expandedId={expandedId}
-                    expandedEventId={expandedEventId}
-                    onToggle={setExpandedId}
-                    onToggleEvent={setExpandedEventId}
-                    onDismissThread={markBriefThreadDismissed}
-                    timeZone={timeZone}
-                  />
-                ))}
-              </BriefSection>
-
-              <BriefSection
-                title="Meeting insights"
-                icon={Calendar}
-                empty={brief.meetingInsights.length === 0}
-              >
-                {brief.meetingInsights.map((item, i) => (
-                  <BriefItemRow
-                    key={`meet-${i}`}
-                    item={item}
-                    expandedId={expandedId}
-                    expandedEventId={expandedEventId}
-                    onToggle={setExpandedId}
-                    onToggleEvent={setExpandedEventId}
-                    timeZone={timeZone}
-                  />
-                ))}
-              </BriefSection>
-
-              <BriefSection title="Risks" icon={AlertTriangle} empty={visibleRisks.length === 0}>
-                {visibleRisks.map((item, i) => (
-                  <BriefItemRow
-                    key={`risk-${item.threadId ?? i}`}
-                    item={item}
-                    expandedId={expandedId}
-                    expandedEventId={expandedEventId}
-                    onToggle={setExpandedId}
-                    onToggleEvent={setExpandedEventId}
-                    onDismissThread={markBriefThreadDismissed}
-                    timeZone={timeZone}
-                  />
-                ))}
-              </BriefSection>
-            </div>
-
-            {visibleRecommendedActions.length > 0 ? (
-              <section className="thread-brief-actions">
-                <div className="thread-brief-section-head">
-                  <Sparkles size={14} />
-                  <h2>Recommended</h2>
-                </div>
-                <div className="thread-brief-action-row">
-                  {visibleRecommendedActions.map((action) => (
-                    <BriefActionButton
-                      key={action.id}
-                      action={action}
-                      preview={
-                        brief
-                          ? actionPreview(action, brief, briefThreadContext, briefEventContext)
-                          : null
-                      }
-                      onRun={() =>
-                        runBriefAction(action, router, markBriefThreadDismissed, brief, briefThreadContext)
-                      }
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        ) : null}
+        <BriefBody
+          loading={loading}
+          canShowBrief={canShowBrief}
+          errorMessage={briefQuery.isError ? briefQuery.error.message : undefined}
+          brief={brief}
+          onRetryBrief={() => briefQuery.refetch()}
+        >
+          {brief ? (
+            <DailyBriefView
+              brief={brief}
+              awayHours={awayHours}
+              followUps={followUps}
+              followUpsLoading={followUpsQuery.isLoading}
+              followUpsError={followUpsQuery.isError}
+              onRetryFollowUps={() => followUpsQuery.refetch()}
+              onDraftFollowUp={handleDraftFollowUp}
+              visibleNeedsAttention={visibleNeedsAttention}
+              visibleRisks={visibleRisks}
+              visibleRecommendedActions={visibleRecommendedActions}
+              expandedId={expandedId}
+              expandedEventId={expandedEventId}
+              onToggle={setExpandedId}
+              onToggleEvent={setExpandedEventId}
+              onDismissThread={markBriefThreadDismissed}
+              timeZone={timeZone}
+              briefThreadContext={briefThreadContext}
+              briefEventContext={briefEventContext}
+              onRunAction={(action) =>
+                runBriefAction(action, router, markBriefThreadDismissed, brief, briefThreadContext)
+              }
+            />
+          ) : null}
+        </BriefBody>
       </div>
     </div>
   );

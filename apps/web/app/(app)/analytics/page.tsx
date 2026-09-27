@@ -34,13 +34,13 @@ function StatCard({
   icon: Icon,
   accent,
   suffix,
-}: {
+}: Readonly<{
   label: string;
   value: number;
   icon: React.ElementType;
   accent?: string;
   suffix?: string;
-}) {
+}>) {
   return (
     <div
       className="thread-rotator-bubble"
@@ -271,8 +271,8 @@ export default function AnalyticsPage() {
                     paddingAngle={2}
                     dataKey="value"
                   >
-                    {pieData.map((_, index) => (
-                      <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} opacity={0.85} />
+                    {pieData.map((entry, index) => (
+                      <Cell key={entry.name} fill={PIE_COLORS[index % PIE_COLORS.length]} opacity={0.85} />
                     ))}
                   </Pie>
                   <Tooltip

@@ -1,5 +1,5 @@
 /** Lightweight health probe — no bundled deps. Used when the main handler is cold-starting. */
-export default (_req, res) => {
+export default function healthHandler(_req, res) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Cache-Control", "no-store");
@@ -11,4 +11,4 @@ export default (_req, res) => {
       message: "Thread API edge health — use /ready after cold start for DB check",
     }),
   );
-};
+}

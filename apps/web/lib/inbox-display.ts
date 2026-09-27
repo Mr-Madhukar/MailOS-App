@@ -1,9 +1,31 @@
+const BRACKET_ADDRESS_REGEX = /<([^<>]+)>/;
+const PLAIN_EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+const SENDER_NAME_REGEX = /^([^<]+)</;
+
+function stripSurroundingPunctuation(token: string): string {
+  let start = 0;
+  let end = token.length;
+  while (start < end && '<("\''.includes(token.charAt(start))) {
+    start++;
+  }
+  while (end > start && '>)"\',;'.includes(token.charAt(end - 1))) {
+    end--;
+  }
+  return token.slice(start, end);
+}
+
 export function parseReplyTo(from?: string) {
   if (!from) return "";
-  const bracket = from.match(/<([^>]+)>/);
-  if (bracket?.[1]) return bracket[1];
-  const plain = from.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i);
-  return plain?.[0] ?? from;
+  const bracket = BRACKET_ADDRESS_REGEX.exec(from);
+  if (bracket?.[1]) return bracket[1].trim();
+  const trimmed = from.trim();
+  if (!trimmed.includes("@")) return trimmed;
+  if (PLAIN_EMAIL_REGEX.test(trimmed)) return trimmed;
+  const token = trimmed
+    .split(/\s+/)
+    .map(stripSurroundingPunctuation)
+    .find((word) => PLAIN_EMAIL_REGEX.test(word));
+  return token ?? trimmed;
 }
 
 export function replySubject(subject?: string) {
@@ -17,17 +39,17 @@ export function replySubject(subject?: string) {
 
 export function displaySender(from?: string) {
   if (!from) return "Unknown";
-  const nameMatch = from.match(/^([^<]+)</);
+  const nameMatch = SENDER_NAME_REGEX.exec(from);
   if (nameMatch?.[1]) {
     return nameMatch[1].trim().replace(/^"|"$/g, "");
   }
   return parseReplyTo(from);
 }
 
-export function formatMessageDate(value?: string) {
+export function formatMessageDate(value?: string | Date | null) {
   if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const parsed = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(parsed.getTime())) return typeof value === "string" ? value : "";
   return parsed.toLocaleString(undefined, {
     weekday: "short",
     month: "short",
@@ -38,9 +60,9 @@ export function formatMessageDate(value?: string) {
 }
 
 /** Compact date for dense inbox rows: time today, weekday this week, else date. */
-export function formatListDate(value?: string) {
+export function formatListDate(value?: string | Date | null) {
   if (!value) return "";
-  const parsed = new Date(value);
+  const parsed = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(parsed.getTime())) return "";
   const now = new Date();
   const sameDay =
@@ -64,8 +86,8 @@ export function decodeHtmlEntities(text: string): string {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
 }
 
 /** Subject line for list rows — skips placeholder values from older cache rows. */

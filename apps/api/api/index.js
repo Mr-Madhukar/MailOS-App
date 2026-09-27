@@ -70,13 +70,13 @@ async function loadHandler() {
   const mod = await import(pathToFileURL(resolved).href);
   const fn = mod.default ?? mod;
   if (typeof fn !== "function") {
-    throw new Error("Serverless bundle must export a default async function");
+    throw new TypeError("Serverless bundle must export a default async function");
   }
   handler = fn;
   return handler;
 }
 
-export default async (req, res) => {
+export default async function handleRequest(req, res) {
   try {
     const pathname = requestPath(req);
 
@@ -106,4 +106,4 @@ export default async (req, res) => {
       hint: "Confirm Vercel Root Directory is apps/api, build log shows vercel-postbuild, and env vars are set (see apps/api/VERCEL_DEPLOY.md)",
     });
   }
-};
+}

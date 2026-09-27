@@ -1,11 +1,11 @@
 {
   "extends": "../../packages/typescript-config/node.json",
   "compilerOptions": {
-    "rootDir": "./src",
     "outDir": "./dist",
 
     "moduleResolution": "Node",
     "module": "esnext",
+    "types": ["node"],
     "paths": {
       "corsair/oauth": ["./node_modules/corsair/dist/oauth.d.ts"],
       "corsair/setup": ["./node_modules/corsair/dist/setup.d.ts"],
@@ -17,7 +17,11 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src"],
+  "files": [
+    "scratch-check-gmail-keys.ts",
+    "scratch-check-gmail-api.ts"
+  ],
+  "include": ["src", "scripts", "**/*.ts"],
   "ts-node": {
     "swc": true
   }

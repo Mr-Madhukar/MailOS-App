@@ -1,3 +1,5 @@
+export type RecurringEditScope = "instance" | "series" | "following";
+
 /** Local calendar day key — never use toISOString().slice(0, 10) for UI buckets. */
 export function localDayKey(date: Date) {
   const year = date.getFullYear();
@@ -10,7 +12,7 @@ export function eventDayKey(start?: string) {
   if (!start) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(start)) return start;
 
-  const datePrefix = start.match(/^(\d{4}-\d{2}-\d{2})/);
+  const datePrefix = /^(\d{4}-\d{2}-\d{2})/.exec(start);
   const hasOffset = /[+-]\d{2}:\d{2}$/.test(start) || start.endsWith("Z");
 
   // Naive datetimes (no offset) — use the date the user picked, not UTC conversion.
@@ -34,7 +36,7 @@ export function toLocalDateTimeInput(date: Date) {
 export function localDateTimeInputToPayload(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error("Invalid date/time");
+    throw new TypeError("Invalid date/time");
   }
 
   return {
@@ -97,7 +99,7 @@ export function eventToArchivePayload(
     htmlLink?: string;
     recurringEventId?: string;
   },
-  opts?: { editScope?: "instance" | "series" | "following" },
+  opts?: { editScope?: RecurringEditScope },
 ) {
   const startInput = isoToLocalDateTimeInput(event.start);
   const endInput = isoToLocalDateTimeInput(event.end) || startInput;
@@ -120,7 +122,7 @@ export function eventToArchivePayload(
 
 export function eventToDeletePayload(
   event: { id: string; summary: string; htmlLink?: string; recurringEventId?: string },
-  opts?: { editScope?: "instance" | "series" | "following" },
+  opts?: { editScope?: RecurringEditScope; cancelWithNotify?: boolean },
 ) {
   return {
     eventId: event.id,
@@ -128,5 +130,6 @@ export function eventToDeletePayload(
     htmlLink: event.htmlLink,
     recurringEventId: event.recurringEventId,
     editScope: opts?.editScope ?? "instance",
+    ...(opts?.cancelWithNotify !== undefined ? { cancelWithNotify: opts.cancelWithNotify } : {}),
   };
 }

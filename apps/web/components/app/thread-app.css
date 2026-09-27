@@ -3,6 +3,28 @@
    Inherits theme tokens from .thread-page (see thread.css)
    ============================================================ */
 
+:root,
+.thread-app {
+  /* Semantic status & accent color tokens */
+  --thread-status-emerald: #34d399;
+  --thread-status-emerald-mint: #6ee7b7;
+  --thread-status-emerald-light: #8fd6b7;
+  --thread-status-green-bright: #4ade80;
+  --thread-status-amber: #fbbf24;
+  --thread-status-amber-light: #fcd34d;
+  --thread-status-yellow: #facc15;
+  --thread-status-red: #f87171;
+  --thread-status-red-bright: #ef4444;
+  --thread-status-red-light: #f3a6a6;
+  --thread-status-rose-light: #fca5a5;
+  --thread-status-red-soft: rgba(239, 68, 68, 0.1);
+  --thread-status-blue: #93c5fd;
+  --thread-status-blue-bright: #60a5fa;
+  --thread-status-purple: #a78bfa;
+  --thread-status-indigo: #a5b4fc;
+  --thread-status-indigo-light: #c4b5fd;
+}
+
 .thread-app {
   display: grid;
   grid-template-columns: 252px 1fr;
@@ -678,9 +700,9 @@
 }
 .thread-inbox-bulk-btn:hover,
 .thread-inbox-bulk-btn--active {
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--thread-inbox-bulk-bg, rgba(99, 102, 241, 0.12));
   border-color: rgba(99, 102, 241, 0.4);
-  color: #a5b4fc;
+  color: var(--thread-status-indigo, #a5b4fc);
 }
 .thread-inbox-bulk-bar {
   display: flex;
@@ -853,8 +875,8 @@
   padding: 5px 12px;
   border-radius: 7px;
   border: 1px solid rgba(251, 191, 36, 0.4);
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.08);
+  color: var(--thread-status-amber, #fbbf24);
+  background: var(--thread-unsub-bg, rgba(251, 191, 36, 0.08));
   text-decoration: none;
   transition: background 0.12s;
 }
@@ -914,19 +936,19 @@
 }
 .thread-rsvp-btn:hover { opacity: 0.85; }
 .thread-rsvp-btn--accept {
-  background: rgba(52, 211, 153, 0.15);
+  background: var(--thread-rsvp-accept-bg, rgba(52, 211, 153, 0.15));
   border-color: rgba(52, 211, 153, 0.4);
-  color: #34d399;
+  color: var(--thread-status-emerald, #34d399);
 }
 .thread-rsvp-btn--tentative {
-  background: rgba(251, 191, 36, 0.1);
+  background: var(--thread-rsvp-tentative-bg, rgba(251, 191, 36, 0.1));
   border-color: rgba(251, 191, 36, 0.3);
-  color: #fbbf24;
+  color: var(--thread-status-amber, #fbbf24);
 }
 .thread-rsvp-btn--decline {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--thread-rsvp-decline-bg, rgba(239, 68, 68, 0.1));
   border-color: rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: var(--thread-status-red, #f87171);
 }
 
 .thread-inbox-compose-btn {
@@ -1013,7 +1035,7 @@
   line-height: 1.65;
   color: var(--thread-text);
   overflow-x: auto;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .thread-email-html-body img {
@@ -1222,7 +1244,7 @@
   line-height: 1.65;
   color: var(--thread-muted);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .thread-inbox-row {
@@ -1604,13 +1626,13 @@
 }
 
 .thread-inbox-banner[data-variant="success"] {
-  color: #8fd6b7;
-  background: rgba(56, 142, 96, 0.12);
+  color: var(--thread-status-emerald-light, #8fd6b7);
+  background: var(--thread-banner-success-bg, rgba(56, 142, 96, 0.12));
 }
 
 .thread-inbox-banner[data-variant="error"] {
-  color: #f3a6a6;
-  background: rgba(180, 60, 60, 0.12);
+  color: var(--thread-status-red-light, #f3a6a6);
+  background: var(--thread-banner-error-bg, rgba(180, 60, 60, 0.12));
 }
 
 .thread-spin {
@@ -2122,7 +2144,7 @@
   font-weight: 600;
   color: var(--thread-text);
   line-height: 1.5;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .thread-cal-event-open {
@@ -2252,6 +2274,18 @@
   place-items: center;
   padding: 24px;
   z-index: 50;
+  border: none;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  color: inherit;
+}
+
+dialog.thread-modal-backdrop::backdrop {
+  background: transparent;
 }
 
 .thread-modal {
@@ -2365,9 +2399,9 @@
 }
 
 .thread-inbox-action-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--thread-status-red-soft, rgba(239, 68, 68, 0.1));
   border-color: rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  color: var(--thread-status-red, #f87171);
 }
 
 .thread-inbox-action-divider {
@@ -2436,8 +2470,8 @@
   place-items: center;
   font-size: 10px;
   font-weight: 700;
-  background: rgba(59, 130, 246, 0.2);
-  color: #93c5fd;
+  background: var(--thread-queue-badge-bg, rgba(59, 130, 246, 0.2));
+  color: var(--thread-status-blue, #93c5fd);
 }
 
 .thread-inbox-compose-note {
@@ -2716,8 +2750,8 @@
 }
 
 .thread-agent-sidebar-delete:hover:not(:disabled) {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.08);
+  color: var(--thread-status-red, #f87171);
+  background: var(--thread-agent-del-bg, rgba(248, 113, 113, 0.08));
 }
 
 .thread-agent-page {
@@ -3215,9 +3249,9 @@
 }
 
 .thread-set-status[data-on="true"] {
-  color: #34d399;
+  color: var(--thread-status-emerald, #34d399);
   border-color: rgba(52, 211, 153, 0.4);
-  background: rgba(52, 211, 153, 0.08);
+  background: var(--thread-set-status-bg, rgba(52, 211, 153, 0.08));
 }
 
 .thread-set-input {
@@ -3267,9 +3301,9 @@
 }
 
 .thread-set-toggle[data-on="true"] {
-  color: #34d399;
+  color: var(--thread-status-emerald, #34d399);
   border-color: rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.1);
+  background: var(--thread-set-toggle-bg, rgba(52, 211, 153, 0.1));
 }
 
 .thread-set-toggle:disabled {
@@ -3417,9 +3451,9 @@
 }
 
 .thread-cmdk-voice--active {
-  color: #ef4444;
+  color: var(--thread-status-red-bright, #ef4444);
   border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.08);
+  background: var(--thread-voice-active-bg, rgba(239, 68, 68, 0.08));
   animation: thread-voice-pulse 1.5s ease-in-out infinite;
 }
 
@@ -3810,18 +3844,18 @@
   border: 1px solid transparent;
 }
 .thread-rsvp-badge[data-status="accepted"] {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
+  background: var(--thread-rsvp-accepted-bg, rgba(52, 211, 153, 0.12));
+  color: var(--thread-status-emerald, #34d399);
   border-color: rgba(52, 211, 153, 0.25);
 }
 .thread-rsvp-badge[data-status="declined"] {
-  background: rgba(248, 113, 113, 0.12);
-  color: #f87171;
+  background: var(--thread-rsvp-declined-bg, rgba(248, 113, 113, 0.12));
+  color: var(--thread-status-red, #f87171);
   border-color: rgba(248, 113, 113, 0.25);
 }
 .thread-rsvp-badge[data-status="tentative"] {
-  background: rgba(250, 204, 21, 0.12);
-  color: #facc15;
+  background: var(--thread-rsvp-tentative-bg, rgba(250, 204, 21, 0.12));
+  color: var(--thread-status-yellow, #facc15);
   border-color: rgba(250, 204, 21, 0.25);
 }
 .thread-rsvp-badge[data-status="needsAction"] {
@@ -4490,16 +4524,16 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: rgba(248, 113, 113, 0.18);
-  color: #f87171;
+  background: var(--thread-brief-badge-red-bg, rgba(248, 113, 113, 0.18));
+  color: var(--thread-status-red, #f87171);
   font-size: 10px;
   font-weight: 700;
   margin-left: 6px;
 }
 
 .thread-brief-badge--amber {
-  background: rgba(251, 191, 36, 0.18);
-  color: #fbbf24;
+  background: var(--thread-brief-badge-amber-bg, rgba(251, 191, 36, 0.18));
+  color: var(--thread-status-amber, #fbbf24);
 }
 
 /* While You Were Away banner */
@@ -4625,8 +4659,8 @@
   padding: 6px 11px;
   border-radius: 7px;
   border: 1px solid rgba(167, 139, 250, 0.3);
-  background: rgba(167, 139, 250, 0.08);
-  color: #a78bfa;
+  background: var(--thread-brief-followup-bg, rgba(167, 139, 250, 0.08));
+  color: var(--thread-status-purple, #a78bfa);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -4689,9 +4723,9 @@
 }
 
 .thread-smart-reply-chip:hover {
-  background: rgba(139, 92, 246, 0.20);
+  background: var(--thread-smart-reply-hover-bg, rgba(139, 92, 246, 0.20));
   border-color: rgba(139, 92, 246, 0.45);
-  color: #c4b5fd;
+  color: var(--thread-status-indigo-light, #c4b5fd);
 }
 
 /* ── AI summary / action chips (dark-theme safe) ─────────────────────────── */
@@ -4737,18 +4771,18 @@
 }
 
 .thread-ai-sentiment--urgent {
-  background: rgba(251, 191, 36, 0.16);
-  color: #fcd34d;
+  background: var(--thread-sentiment-urgent-bg, rgba(251, 191, 36, 0.16));
+  color: var(--thread-status-amber-light, #fcd34d);
 }
 
 .thread-ai-sentiment--positive {
-  background: rgba(52, 211, 153, 0.14);
-  color: #6ee7b7;
+  background: var(--thread-sentiment-positive-bg, rgba(52, 211, 153, 0.14));
+  color: var(--thread-status-emerald-mint, #6ee7b7);
 }
 
 .thread-ai-sentiment--negative {
-  background: rgba(248, 113, 113, 0.14);
-  color: #fca5a5;
+  background: var(--thread-sentiment-negative-bg, rgba(248, 113, 113, 0.14));
+  color: var(--thread-status-rose-light, #fca5a5);
 }
 
 .thread-topic-chip {
@@ -5015,9 +5049,9 @@
   font-weight: 600;
   padding: 5px 10px;
   border-radius: 8px;
-  background: rgba(59, 130, 246, 0.18);
+  background: var(--thread-demo-cta-bg, rgba(59, 130, 246, 0.18));
   border: 1px solid rgba(96, 165, 250, 0.28);
-  color: #93c5fd;
+  color: var(--thread-status-blue, #93c5fd);
   text-decoration: none;
   transition: background 0.15s;
 }
@@ -5200,8 +5234,8 @@
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid rgba(74, 222, 128, 0.3);
-  background: rgba(74, 222, 128, 0.08);
-  color: #4ade80;
+  background: var(--thread-demo-timer-bg, rgba(74, 222, 128, 0.08));
+  color: var(--thread-status-green-bright, #4ade80);
   letter-spacing: 0.02em;
   flex-shrink: 0;
   white-space: nowrap;
@@ -5211,15 +5245,15 @@
 /* < 5 min — amber warning */
 .thread-demo-timer[data-state="warn"] {
   border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.1);
-  color: #fbbf24;
+  background: var(--thread-demo-warn-bg, rgba(251, 191, 36, 0.1));
+  color: var(--thread-status-amber, #fbbf24);
 }
 
 /* < 2 min — red urgent */
 .thread-demo-timer[data-state="danger"] {
   border-color: rgba(239, 68, 68, 0.45);
-  background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
+  background: var(--thread-demo-danger-bg, rgba(239, 68, 68, 0.1));
+  color: var(--thread-status-red, #f87171);
   animation: thread-demo-timer-pulse 1.2s ease-in-out infinite;
 }
 
@@ -5292,13 +5326,13 @@
 }
 
 .thread-demo-shortcut:hover {
-  background: rgba(96, 165, 250, 0.1);
+  background: var(--thread-demo-shortcut-hover-bg, rgba(96, 165, 250, 0.1));
   border-color: rgba(96, 165, 250, 0.38);
-  color: #93c5fd;
+  color: var(--thread-status-blue, #93c5fd);
 }
 
 .thread-demo-shortcut:hover svg {
-  color: #93c5fd;
+  color: var(--thread-status-blue, #93c5fd);
 }
 
 /* ── CTA buttons ── */
@@ -5437,11 +5471,11 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--thread-demo-expired-bg, rgba(239, 68, 68, 0.1));
   border: 1px solid rgba(239, 68, 68, 0.25);
   display: grid;
   place-items: center;
-  color: #f87171;
+  color: var(--thread-status-red, #f87171);
 }
 
 .thread-demo-expired-title {
@@ -5547,14 +5581,14 @@
 }
 
 .thread-connect-gate-icon[data-service="gmail"] {
-  color: #60a5fa;
-  background: rgba(59, 130, 246, 0.12);
+  color: var(--thread-status-blue-bright, #60a5fa);
+  background: var(--thread-gate-gmail-bg, rgba(59, 130, 246, 0.12));
   border-color: rgba(59, 130, 246, 0.28);
 }
 
 .thread-connect-gate-icon[data-service="calendar"] {
-  color: #a78bfa;
-  background: rgba(139, 92, 246, 0.12);
+  color: var(--thread-status-purple, #a78bfa);
+  background: var(--thread-gate-cal-bg, rgba(139, 92, 246, 0.12));
   border-color: rgba(139, 92, 246, 0.28);
 }
 
