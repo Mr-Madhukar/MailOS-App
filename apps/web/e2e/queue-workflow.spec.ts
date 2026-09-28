@@ -32,7 +32,7 @@ test("compose → queue → approve email workflow", async ({ page }) => {
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByRole("button", { name: /Approve/i }).click();
 
-  await expect(page.getByText(/Approved/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Approved and sent")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "History" }).click();
   const historyCard = page.locator(".thread-queue-card").filter({ hasText: subject });

@@ -8,6 +8,16 @@ import { trpc } from "~/trpc/client";
 import { useThreadUser, initials } from "~/components/app/use-thread-user";
 import { useDemoMode } from "~/hooks/use-demo-mode";
 
+interface ConnectionRowProps {
+  readonly connected: boolean;
+  readonly connectHref: string;
+  readonly connectedLabel: string;
+  readonly onDisconnect: () => void;
+  readonly disconnecting?: boolean;
+  readonly demoBlocked?: boolean;
+  readonly demoBlockedHint?: string;
+}
+
 function ConnectionRow({
   connected,
   connectHref,
@@ -16,15 +26,7 @@ function ConnectionRow({
   disconnecting,
   demoBlocked,
   demoBlockedHint,
-}: {
-  connected: boolean;
-  connectHref: string;
-  connectedLabel: string;
-  onDisconnect: () => void;
-  disconnecting?: boolean;
-  demoBlocked?: boolean;
-  demoBlockedHint?: string;
-}) {
+}: Readonly<ConnectionRowProps>) {
   if (connected) {
     return (
       <div className="thread-set-row-actions">
@@ -66,19 +68,21 @@ function ConnectionRow({
   );
 }
 
+interface ApprovalToggleProps {
+  readonly title: string;
+  readonly description: string;
+  readonly enabled: boolean;
+  readonly onToggle: (next: boolean) => void;
+  readonly disabled?: boolean;
+}
+
 function ApprovalToggle({
   title,
   description,
   enabled,
   onToggle,
   disabled,
-}: {
-  title: string;
-  description: string;
-  enabled: boolean;
-  onToggle: (next: boolean) => void;
-  disabled?: boolean;
-}) {
+}: Readonly<ApprovalToggleProps>) {
   return (
     <div className="thread-set-row">
       <span className="thread-set-row-icon">
@@ -100,6 +104,16 @@ function ApprovalToggle({
       </button>
     </div>
   );
+}
+
+function getTwoFactorButtonLabel(isPending: boolean, isEnabled?: boolean | null): string {
+  if (isPending) {
+    return "Updating…";
+  }
+  if (isEnabled) {
+    return "Disable";
+  }
+  return "Enable";
 }
 
 export default function SettingsPage() {
@@ -334,7 +348,7 @@ export default function SettingsPage() {
             onClick={() => toggle2FA.mutate({ enabled: !user.twoFactorEnabled })}
             style={{ fontSize: 13, padding: "8px 16px" }}
           >
-            {toggle2FA.isPending ? "Updating…" : user.twoFactorEnabled ? "Disable" : "Enable"}
+            {getTwoFactorButtonLabel(toggle2FA.isPending, user.twoFactorEnabled)}
           </button>
         </div>
       </section>

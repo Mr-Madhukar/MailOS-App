@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Archive,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { trpc } from "~/trpc/client";
+import type { RouterOutputs } from "@repo/trpc/client";
 import { SkeletonList } from "~/components/app/skeleton-list";
 import { QueryErrorState } from "~/components/app/query-error-state";
 import { dismissBriefThreadFromQueueItem } from "~/lib/brief-dismissals";
@@ -59,18 +60,202 @@ function kindLabel(kind: string, payload: Record<string, unknown>) {
 }
 
 function readArchivePayload(payload: Record<string, unknown>) {
+  const startRaw = payload.startDateTime;
+  const endRaw = payload.endDateTime;
+  const tzRaw = payload.timeZone;
   return {
-    startDateTime: String(payload.startDateTime ?? ""),
-    endDateTime: String(payload.endDateTime ?? ""),
-    timeZone: payload.timeZone ? String(payload.timeZone) : undefined,
+    startDateTime: typeof startRaw === "string" ? startRaw : "",
+    endDateTime: typeof endRaw === "string" ? endRaw : "",
+    timeZone: typeof tzRaw === "string" ? tzRaw : undefined,
   };
+}
+
+type QueueListItem = RouterOutputs["queue"]["list"]["items"][number];
+
+type ActiveQueueAction = "approve" | "dismiss" | null;
+
+function getDismissButtonLabel(
+  isItemActive: boolean,
+  activeAction: ActiveQueueAction,
+  isProcessing: boolean,
+): string {
+  if (isItemActive && activeAction === "dismiss") {
+    return "Removing…";
+  }
+  if (isProcessing) {
+    return "Cancel";
+  }
+  return "Dismiss";
+}
+
+function getApproveButtonLabel(
+  isProcessing: boolean,
+  canRetry: boolean,
+  defaultLabel: string,
+): string {
+  if (isProcessing) {
+    return "Processing…";
+  }
+  if (canRetry) {
+    return "Retry";
+  }
+  return defaultLabel;
+}
+
+function formatRecipientValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    const list = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    return list.length > 0 ? list.join(", ") : null;
+  }
+  return null;
+}
+
+interface QueueCardProps {
+  readonly item: QueueListItem;
+  readonly anyBusy: boolean;
+  readonly activeItemId: string | null;
+  readonly activeAction: ActiveQueueAction;
+  readonly approveLabel: (item: QueueListItem) => string;
+  readonly onDismiss: (id: string) => void;
+  readonly onApprove: (item: QueueListItem) => void;
+}
+
+function QueueCard({
+  item,
+  anyBusy,
+  activeItemId,
+  activeAction,
+  approveLabel,
+  onDismiss,
+  onApprove,
+}: Readonly<QueueCardProps>) {
+  const Icon = kindIcon(item.kind);
+  const isPending = item.status === "pending" || item.status === "processing";
+  const isProcessing = item.status === "processing";
+  const canRetry = item.status === "failed";
+  const isItemActive = activeItemId === item.id;
+  const ccRecipient = formatRecipientValue(item.payload?.cc);
+  const bccRecipient = formatRecipientValue(item.payload?.bcc);
+  const hasRecipients =
+    (item.kind === "email_send" || item.kind === "email_draft") &&
+    Boolean(ccRecipient || bccRecipient);
+
+  return (
+    <article key={item.id} className="thread-queue-card" data-status={item.status}>
+      <div className="thread-queue-card-head">
+        <span className="thread-queue-card-icon">
+          <Icon size={16} />
+        </span>
+        <div className="thread-queue-card-meta">
+          <h3>{item.title}</h3>
+          <div className="thread-queue-card-tags">
+            <span className="thread-mono-tag">{kindLabel(item.kind, item.payload)}</span>
+            <span className="thread-queue-card-time">
+              <Clock3 size={12} />
+              {new Date(item.createdAt).toLocaleString()}
+            </span>
+          </div>
+        </div>
+        {!isPending ? (
+          <span className="thread-queue-status" data-status={item.status}>
+            {item.status === "approved" && <CheckCircle2 size={13} />}
+            {item.status === "dismissed" && <XCircle size={13} />}
+            {item.status === "failed" && <XCircle size={13} />}
+            {item.status}
+          </span>
+        ) : null}
+      </div>
+
+      {item.preview ? <p className="thread-queue-card-preview">{item.preview}</p> : null}
+      {hasRecipients ? (
+        <div
+          className="thread-queue-card-recipients"
+          style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--muted)", marginTop: 4 }}
+        >
+          {ccRecipient ? (
+            <span>
+              <strong>Cc:</strong> {ccRecipient}
+            </span>
+          ) : null}
+          {bccRecipient ? (
+            <span>
+              <strong>Bcc:</strong> {bccRecipient}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {item.errorMessage ? (
+        <p className="thread-queue-card-error">{item.errorMessage}</p>
+      ) : null}
+
+      {isPending || canRetry ? (
+        <div className="thread-queue-card-actions">
+          <button
+            type="button"
+            className="thread-btn-ghost"
+            disabled={anyBusy}
+            onClick={() => onDismiss(item.id)}
+          >
+            {getDismissButtonLabel(isItemActive, activeAction, isProcessing)}
+          </button>
+          <button
+            type="button"
+            className="thread-btn-accent"
+            disabled={anyBusy || isProcessing}
+            onClick={() => onApprove(item)}
+          >
+            {getApproveButtonLabel(isProcessing, canRetry, approveLabel(item))}
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function useModalBackdrop(
+  isOpen: boolean,
+  onClose: () => void,
+  isBusy = false,
+) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const dialog = dialogRef.current;
+    const handleClick = (e: MouseEvent) => {
+      if (e.target === dialog && !isBusy) {
+        onClose();
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    };
+
+    dialog?.addEventListener("click", handleClick);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      dialog?.removeEventListener("click", handleClick);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose, isBusy]);
+
+  return dialogRef;
 }
 
 export default function QueuePage() {
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [archiveConfirm, setArchiveConfirm] = useState<ArchiveConfirmState | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  const [activeAction, setActiveAction] = useState<"approve" | "dismiss" | null>(null);
+  const [activeAction, setActiveAction] = useState<ActiveQueueAction>(null);
   const [search, setSearch] = useState("");
   const utils = trpc.useUtils();
   const meQuery = trpc.auth.me.useQuery({});
@@ -179,6 +364,11 @@ export default function QueuePage() {
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data?.items]);
   const pending = items.filter((item) => item.status === "pending" || item.status === "processing");
   const anyBusy = activeItemId !== null || approve.isPending || dismiss.isPending;
+  const archiveDialogRef = useModalBackdrop(
+    Boolean(archiveConfirm),
+    () => setArchiveConfirm(null),
+    anyBusy,
+  );
 
   const handleQueueMutationError = (
     error: { message: string },
@@ -279,6 +469,59 @@ export default function QueuePage() {
     return check.valid ? null : check.message;
   }, [archiveConfirm]);
 
+  const renderQueueContent = () => {
+    if (itemsQuery.isLoading) {
+      return <SkeletonList count={6} />;
+    }
+    if (itemsQuery.isError) {
+      return (
+        <QueryErrorState
+          title="Couldn't load queue"
+          message={itemsQuery.error.message}
+          onRetry={() => void itemsQuery.refetch()}
+          className="thread-app-empty"
+          style={{ marginTop: 24 }}
+        />
+      );
+    }
+    if (tab === "pending" && pending.length === 0) {
+      return (
+        <div className="thread-app-empty" style={{ marginTop: 24 }}>
+          <div className="thread-app-empty-icon">
+            <Sparkles size={24} />
+          </div>
+          <div>
+            <h3>Nothing waiting for approval</h3>
+            <p>Queue a reply or meeting from Inbox — it will show up here before anything sends.</p>
+          </div>
+          <Link
+            href="/inbox"
+            className="thread-btn-accent"
+            style={{ fontSize: 13, padding: "10px 18px" }}
+          >
+            Open inbox
+          </Link>
+        </div>
+      );
+    }
+    return (
+      <div className="thread-queue-list">
+        {filtered.map((item) => (
+          <QueueCard
+            key={item.id}
+            item={item}
+            anyBusy={anyBusy}
+            activeItemId={activeItemId}
+            activeAction={activeAction}
+            approveLabel={approveLabel}
+            onDismiss={(id) => dismiss.mutate({ id })}
+            onApprove={handleApproveClick}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="thread-queue-page">
       <div className="thread-queue-hero">
@@ -328,117 +571,16 @@ export default function QueuePage() {
         />
       </div>
 
-      {itemsQuery.isLoading ? (
-        <SkeletonList count={6} />
-      ) : itemsQuery.isError ? (
-        <QueryErrorState
-          title="Couldn't load queue"
-          message={itemsQuery.error.message}
-          onRetry={() => void itemsQuery.refetch()}
-          className="thread-app-empty"
-          style={{ marginTop: 24 }}
-        />
-      ) : tab === "pending" && pending.length === 0 ? (
-        <div className="thread-app-empty" style={{ marginTop: 24 }}>
-          <div className="thread-app-empty-icon">
-            <Sparkles size={24} />
-          </div>
-          <div>
-            <h3>Nothing waiting for approval</h3>
-            <p>Queue a reply or meeting from Inbox — it will show up here before anything sends.</p>
-          </div>
-          <Link
-            href="/inbox"
-            className="thread-btn-accent"
-            style={{ fontSize: 13, padding: "10px 18px" }}
-          >
-            Open inbox
-          </Link>
-        </div>
-      ) : (
-        <div className="thread-queue-list">
-          {filtered.map((item) => {
-            const Icon = kindIcon(item.kind);
-            const isPending = item.status === "pending" || item.status === "processing";
-            const isProcessing = item.status === "processing";
-            const canRetry = item.status === "failed";
-            return (
-              <article key={item.id} className="thread-queue-card" data-status={item.status}>
-                <div className="thread-queue-card-head">
-                  <span className="thread-queue-card-icon">
-                    <Icon size={16} />
-                  </span>
-                  <div className="thread-queue-card-meta">
-                    <h3>{item.title}</h3>
-                    <div className="thread-queue-card-tags">
-                      <span className="thread-mono-tag">{kindLabel(item.kind, item.payload)}</span>
-                      <span className="thread-queue-card-time">
-                        <Clock3 size={12} />
-                        {new Date(item.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                  {!isPending ? (
-                    <span className="thread-queue-status" data-status={item.status}>
-                      {item.status === "approved" && <CheckCircle2 size={13} />}
-                      {item.status === "dismissed" && <XCircle size={13} />}
-                      {item.status === "failed" && <XCircle size={13} />}
-                      {item.status}
-                    </span>
-                  ) : null}
-                </div>
-
-                {item.preview ? <p className="thread-queue-card-preview">{item.preview}</p> : null}
-                {(item.kind === "email_send" || item.kind === "email_draft") &&
-                  (item.payload?.cc || item.payload?.bcc) ? (
-                  <div className="thread-queue-card-recipients" style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                    {item.payload.cc ? <span><strong>Cc:</strong> {String(item.payload.cc)}</span> : null}
-                    {item.payload.bcc ? <span><strong>Bcc:</strong> {String(item.payload.bcc)}</span> : null}
-                  </div>
-                ) : null}
-                {item.errorMessage ? (
-                  <p className="thread-queue-card-error">{item.errorMessage}</p>
-                ) : null}
-
-                {isPending || canRetry ? (
-                  <div className="thread-queue-card-actions">
-                    <button
-                      type="button"
-                      className="thread-btn-ghost"
-                      disabled={anyBusy}
-                      onClick={() => dismiss.mutate({ id: item.id })}
-                    >
-                      {activeItemId === item.id && activeAction === "dismiss" ? "Removing…" : isProcessing ? "Cancel" : "Dismiss"}
-                    </button>
-                    <button
-                      type="button"
-                      className="thread-btn-accent"
-                      disabled={anyBusy || isProcessing}
-                      onClick={() => handleApproveClick(item)}
-                    >
-                      {isProcessing
-                        ? "Processing…"
-                        : canRetry
-                          ? "Retry"
-                          : approveLabel(item)}
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      )}
+      {renderQueueContent()}
 
       {archiveConfirm ? (
-        <div
+        <dialog
+          ref={archiveDialogRef}
+          open
+          aria-modal="true"
           className="thread-modal-backdrop thread-modal-backdrop--confirm"
-          onClick={() => !anyBusy && setArchiveConfirm(null)}
         >
-          <div
-            className="thread-modal thread-cal-delete-modal thread-cal-confirm-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="thread-modal thread-cal-delete-modal thread-cal-confirm-modal">
             <div className="thread-modal-head">
               <h3>Confirm dates</h3>
               <button
@@ -533,7 +675,7 @@ export default function QueuePage() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       ) : null}
 
       {connectModal}
