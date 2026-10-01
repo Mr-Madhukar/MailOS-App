@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [ -f ".env" ]; then
+if [[ -f ".env" ]]; then
   echo ".env file exists."
 else
   cp .env.example .env
@@ -12,9 +12,9 @@ else
 fi
 
 for dir in apps/* packages/*; do
-  if [ -d "$dir" ]; then
+  if [[ -d "$dir" ]]; then
     target="$dir/.env"
-    if [ ! -e "$target" ]; then
+    if [[ ! -e "$target" ]]; then
       ln -sf "$(realpath .env)" "$target"
       echo "Linked .env -> $dir"
     fi

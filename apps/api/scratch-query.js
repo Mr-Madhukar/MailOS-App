@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' }); // load from project root .env
 
 const connectionString = process.env.DATABASE_URL;
-console.log("Connecting to:", connectionString ? connectionString.split('@')[1] : "undefined");
+console.log("Connecting to PostgreSQL database...");
 
 const pool = new Pool({
   connectionString,
@@ -30,11 +30,10 @@ async function main() {
     console.log(columnsRes.rows.map(c => `${c.column_name} (${c.data_type})`).join(', '));
   }
 
-  // Let's also check if there are any rows in corsair_accounts
+  // Check row count only — avoid selecting or logging sensitive account data
   try {
-    const accountsRes = await pool.query(`SELECT * FROM corsair_accounts;`);
-    console.log(`\nFound ${accountsRes.rows.length} accounts in corsair_accounts:`);
-    console.log(accountsRes.rows);
+    const accountsRes = await pool.query(`SELECT COUNT(*)::int AS count FROM corsair_accounts;`);
+    console.log(`\nFound ${accountsRes.rows[0]?.count ?? 0} accounts in corsair_accounts.`);
   } catch (err) {
     console.error("Failed to query corsair_accounts table:", err.message);
   }
@@ -43,7 +42,7 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  console.error(error);
+  console.error("Error running query script:", error.message);
 } finally {
   await pool.end();
 }

@@ -9,6 +9,7 @@
  * Non-retriable errors (4xx except 429, auth errors) are thrown immediately.
  */
 
+import { randomInt } from "node:crypto";
 import { logger } from "@repo/logger";
 
 export interface RetryOptions {
@@ -58,22 +59,22 @@ export async function withRetry<T>(
 ): Promise<T> {
   const { maxAttempts = 3, baseDelayMs = 300, maxDelayMs = 8000, label = "corsair" } = opts;
 
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  async function execute(attempt: number): Promise<T> {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts || !isTransient(error)) {
+      if (attempt >= maxAttempts || !isTransient(error)) {
         throw error;
       }
-      const jitter = Math.random() * 100;
+      const jitter = randomInt(0, 100);
       const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1) + jitter, maxDelayMs);
       logger.warn(`[retry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${Math.round(backoff)}ms`, {
         error: error instanceof Error ? error.message : String(error),
       });
       await delay(backoff);
+      return execute(attempt + 1);
     }
   }
-  throw lastError;
+
+  return execute(1);
 }

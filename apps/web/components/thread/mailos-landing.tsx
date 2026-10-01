@@ -49,7 +49,7 @@ function useLenis() {
 }
 
 /* ---- Kbd component ---- */
-function Kbd({ children }: { children: React.ReactNode }) {
+function Kbd({ children }: { readonly children: React.ReactNode }) {
   return <span className="lp-kbd">{children}</span>;
 }
 
@@ -70,7 +70,7 @@ const COMMANDS = [
   { icon: <Archive size={15} />, label: "Archive selected", keys: ["E"], key: "archive" },
 ];
 
-function MailRow({ m, active }: { m: (typeof INBOX_ITEMS)[number]; active: boolean }) {
+function MailRow({ m, active }: { readonly m: (typeof INBOX_ITEMS)[number]; readonly active: boolean }) {
   return (
     <div className="lp-row" data-unread={m.unread} data-active={active}>
       <span className="lp-row-dot" />
@@ -171,8 +171,8 @@ function HeroWindow() {
               <span className="lp-pal-ic">{c.icon}</span>
               {c.label}
               <span className="lp-pal-keys">
-                {c.keys.map((k, j) => (
-                  <Kbd key={j}>{k}</Kbd>
+                {c.keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
                 ))}
               </span>
             </span>
@@ -204,12 +204,12 @@ function MiniPalette() {
       <div className="lp-pal-list">
         <span className="lp-pal-item" data-on="true">
           <span className="lp-pal-ic"><Send size={15} /></span>
-          Send and archive
+          {" "}Send and archive
           <span className="lp-pal-keys"><Kbd>⌘</Kbd><Kbd>↵</Kbd></span>
         </span>
         <span className="lp-pal-item">
           <span className="lp-pal-ic"><Reply size={15} /></span>
-          Reply with availability
+          {" "}Reply with availability
         </span>
       </div>
     </div>
@@ -274,12 +274,12 @@ function MiniAgent() {
 function BentoCard({
   label, title, body, keys, wide, children,
 }: {
-  label: string;
-  title: string;
-  body: string;
-  keys?: string[];
-  wide?: boolean;
-  children: React.ReactNode;
+  readonly label: string;
+  readonly title: string;
+  readonly body: string;
+  readonly keys?: readonly string[];
+  readonly wide?: boolean;
+  readonly children: React.ReactNode;
 }) {
   return (
     <article className="lp-bento-card lp-rise" data-wide={wide}>
@@ -290,7 +290,7 @@ function BentoCard({
         <p className="lp-bento-body">{body}</p>
         {keys && (
           <p className="lp-bento-keys">
-            {keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}
+            {keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
           </p>
         )}
       </div>
@@ -303,9 +303,9 @@ function BentoCard({
 function AnimatedNumber({
   value, prefix = "", suffix = "",
 }: {
-  value: number;
-  prefix?: string;
-  suffix?: string;
+  readonly value: number;
+  readonly prefix?: string;
+  readonly suffix?: string;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, margin: "-40px" });
@@ -376,15 +376,15 @@ function Spotlight() {
 // Deterministic PRNG for mote positions (SSR safe)
 function moteRng(seed: number) {
   return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
+    seed = Math.trunc(seed);
+    seed = Math.trunc(seed + 0x6d2b79f5);
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-type Mote = { x: number; y: number; s: number; o: number; dur: number; tw: number; delay: number; w: number };
+type Mote = { id: string; x: number; y: number; s: number; o: number; dur: number; tw: number; delay: number; w: number };
 
 function buildMotes(count: number): Mote[] {
   const rand = moteRng(7138);
@@ -394,6 +394,7 @@ function buildMotes(count: number): Mote[] {
     const a = rand() * Math.PI * 2;
     const r = Math.pow(rand(), 0.6);
     motes.push({
+      id: `mote-${i}`,
       x: +Math.max(2, Math.min(70, CX + Math.cos(a) * r * RX)).toFixed(2),
       y: +Math.max(1, Math.min(46, CY + Math.sin(a) * r * RY)).toFixed(2),
       s: +(2 + rand() * 3.5).toFixed(1),
@@ -412,9 +413,9 @@ const MOTES = buildMotes(28);
 function Motes() {
   return (
     <div className="lp-motes" aria-hidden="true">
-      {MOTES.map((m, i) => (
+      {MOTES.map((m) => (
         <span
-          key={i}
+          key={m.id}
           className="lp-mote"
           style={{
             top: `${m.y}%`,
@@ -432,7 +433,7 @@ function Motes() {
   );
 }
 
-function SectionHead({ label, title }: { label: string; title: React.ReactNode }) {
+function SectionHead({ label, title }: { readonly label: string; readonly title: React.ReactNode }) {
   return (
     <div className="lp-head lp-rise">
       <p className="lp-label tnum">{label}</p>
@@ -532,8 +533,7 @@ export function MailosLanding() {
             <span className="lp-serif lp-underline">
               thought
               <MorphUnderline />
-            </span>
-            .
+            </span>.
           </h1>
           <p className="lp-sub lp-rise" style={{ animationDelay: "0.18s" }}>
             MailOS puts Gmail and Google Calendar in one fast window

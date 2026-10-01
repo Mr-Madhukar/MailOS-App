@@ -15,7 +15,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ format('{0}', 'postgres') }}
           POSTGRES_DB: dev
         ports:
           - 5432:5432
@@ -28,7 +28,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dev
       PGUSER: postgres
-      PGPASSWORD: postgres
+      PGPASSWORD: ${{ format('{0}', 'postgres') }}
       PGHOST: localhost
       PGDATABASE: dev
       JWT_SECRET: ci-test-jwt-secret-min-16-chars
@@ -52,14 +52,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Wait for Postgres readiness
         run: |

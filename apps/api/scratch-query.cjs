@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { Pool } = require('pg');
 require('dotenv').config({ path: '../../.env' }); // load from project root .env
 
 const connectionString = process.env.DATABASE_URL;
-console.log("Connecting to:", connectionString ? connectionString.split('@')[1] : "undefined");
+console.log("Connecting to PostgreSQL database...");
 
 const pool = new Pool({
   connectionString,
@@ -28,14 +27,15 @@ async function main() {
   console.log("\nConstraints on corsair_accounts:");
   console.log(constraintsRes.rows);
 
-  // Let's also check if there are any rows in corsair_accounts
+  // Check row count only — avoid selecting or logging sensitive account data
   try {
-    const accountsRes = await pool.query(`SELECT id, tenant_id, integration_id, config FROM corsair_accounts;`);
-    console.log(`\nFound ${accountsRes.rows.length} accounts in corsair_accounts:`);
-    console.log(accountsRes.rows);
+    const accountsRes = await pool.query(`SELECT COUNT(*)::int AS count FROM corsair_accounts;`);
+    console.log(`\nFound ${accountsRes.rows[0]?.count ?? 0} accounts in corsair_accounts.`);
   } catch (err) {
     console.error("Failed to query corsair_accounts table:", err.message);
   }
 }
 
-main().catch(console.error).finally(() => pool.end());
+main()
+  .catch((err) => console.error("Error running query script:", err.message))
+  .finally(() => pool.end());
