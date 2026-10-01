@@ -4,23 +4,23 @@ import { useMemo, useState } from "react";
 
 function parseEmail(from?: string) {
   if (!from) return "";
-  const bracket = from.match(/<([^>]+)>/);
+  const bracket = /<([^<>]+)>/.exec(from);
   return (bracket?.[1] ?? from).trim();
 }
 
 function senderInitial(from?: string) {
   if (!from) return "?";
-  const nameMatch = from.match(/^([^<]+)</);
+  const nameMatch = /^([^<]+)</.exec(from);
   const label = nameMatch?.[1]?.trim().replace(/^"|"$/g, "") ?? parseEmail(from);
   return label.charAt(0).toUpperCase() || "?";
 }
 
-type SenderAvatarProps = {
+type SenderAvatarProps = Readonly<{
   from?: string;
   selfEmail?: string;
   selfPhotoUrl?: string | null;
   size?: number;
-};
+}>;
 
 export function SenderAvatar({
   from,
@@ -31,7 +31,7 @@ export function SenderAvatar({
   const email = parseEmail(from);
   const initial = senderInitial(from);
   const isSelf = Boolean(
-    selfEmail && email && email.toLowerCase() === selfEmail.trim().toLowerCase(),
+    email && email.toLowerCase() === selfEmail?.trim().toLowerCase(),
   );
   const [failed, setFailed] = useState(false);
 

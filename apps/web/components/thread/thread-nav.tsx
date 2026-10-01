@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Github, ArrowRight, Menu, X } from "lucide-react";
-import { ThreadLogoMark, ThreadWordmark } from "./thread-logo";
+import { ArrowRight, Menu, X } from "lucide-react";
+import { GithubIcon, ThreadLogoMark, ThreadWordmark } from "./thread-logo";
 import { useThreadAuth } from "./thread-auth-provider";
 import { useThreadUser } from "~/components/app/use-thread-user";
 
@@ -63,7 +63,7 @@ export function ThreadNav() {
             aria-label="GitHub"
             className="thread-nav-icon-btn"
           >
-            <Github size={15} />
+            <GithubIcon size={15} />
           </a>
           {user ? (
             <Link href="/inbox" className="thread-btn-accent thread-nav-cta" onClick={closeMenu}>

@@ -5,9 +5,11 @@ export function sanitizeEmailHeader(value: string): string {
   return value.replace(/[\r\n]/g, "").trim();
 }
 
+const EMAIL_BRACKET_REGEX = /<([^<>]+)>/;
+
 export function parseRecipientAddress(value: string): string {
   const sanitized = sanitizeEmailHeader(value);
-  const bracket = sanitized.match(/<([^>]+)>/);
+  const bracket = EMAIL_BRACKET_REGEX.exec(sanitized);
   return (bracket?.[1] ?? sanitized).trim();
 }
 
@@ -16,7 +18,7 @@ export const singleRecipientSchema = z
   .min(3)
   .max(320)
   .transform(sanitizeEmailHeader)
-  .refine((value) => z.string().email().safeParse(parseRecipientAddress(value)).success, {
+  .refine((value) => z.email().safeParse(parseRecipientAddress(value)).success, {
     message: "Invalid recipient email address",
   });
 

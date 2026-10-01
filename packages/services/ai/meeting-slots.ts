@@ -52,16 +52,27 @@ function formatSlotLabel(startIso: string, endIso: string, timeZone: string): st
   return `${fmt.format(new Date(startIso))} – ${fmtTime.format(new Date(endIso))}`;
 }
 
-function findFreeSlots(
-  busySlots: Array<{ start: string; end: string }>,
-  rangeStart: Date,
-  rangeEnd: Date,
-  durationMs: number,
-  workdayStartHour: number,
-  workdayEndHour: number,
-  timeZone: string,
-  maxSlots: number,
-): MeetingSlot[] {
+type FindFreeSlotsOptions = {
+  busySlots: Array<{ start: string; end: string }>;
+  rangeStart: Date;
+  rangeEnd: Date;
+  durationMs: number;
+  workdayStartHour: number;
+  workdayEndHour: number;
+  timeZone: string;
+  maxSlots: number;
+};
+
+function findFreeSlots({
+  busySlots,
+  rangeStart,
+  rangeEnd,
+  durationMs,
+  workdayStartHour,
+  workdayEndHour,
+  timeZone,
+  maxSlots,
+}: FindFreeSlotsOptions): MeetingSlot[] {
   const slots: MeetingSlot[] = [];
   const step = 30 * 60 * 1000; // 30-min increments
 
@@ -69,7 +80,7 @@ function findFreeSlots(
 
   while (cursor < rangeEnd && slots.length < maxSlots) {
     // Only suggest during working hours
-    const localHour = parseInt(
+    const localHour = Number.parseInt(
       new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hour12: false }).format(cursor),
       10,
     );
@@ -161,16 +172,16 @@ export async function findMeetingSlots(input: {
     end: c.end ?? rangeStart.toISOString(),
   }));
 
-  const rawSlots = findFreeSlots(
+  const rawSlots = findFreeSlots({
     busySlots,
     rangeStart,
     rangeEnd,
     durationMs,
-    9,  // workday start hour
-    18, // workday end hour
+    workdayStartHour: 9, // workday start hour
+    workdayEndHour: 18, // workday end hour
     timeZone,
-    8,  // find up to 8 candidates
-  );
+    maxSlots: 8, // find up to 8 candidates
+  });
 
   // Use OpenAI to pick the best 3–5 slots if available
   if (isOpenAiConfigured() && rawSlots.length > 3 && input.context) {
@@ -208,13 +219,16 @@ export async function findMeetingSlots(input: {
     }
   }
 
+  let note: string | undefined;
+  if (input.attendeeEmail) {
+    note = `Slots based on your calendar only. Verify ${input.attendeeEmail}'s availability separately.`;
+  } else if (rawSlots.length === 0) {
+    note = `No free ${input.durationMinutes}-minute slots found in the selected range. Try a wider date range.`;
+  }
+
   return {
     slots: rawSlots.slice(0, 5),
-    note: input.attendeeEmail
-      ? `Slots based on your calendar only. Verify ${input.attendeeEmail}'s availability separately.`
-      : rawSlots.length === 0
-        ? `No free ${input.durationMinutes}-minute slots found in the selected range. Try a wider date range.`
-        : undefined,
+    note,
     calendarConnected: true,
   };
 }

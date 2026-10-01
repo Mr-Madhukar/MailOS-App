@@ -3312,6 +3312,7 @@ dialog.thread-modal-backdrop::backdrop {
 }
 
 /* ── Command palette ── */
+dialog.thread-cmdk-overlay,
 .thread-cmdk-overlay {
   position: fixed;
   inset: 0;
@@ -3323,6 +3324,21 @@ dialog.thread-modal-backdrop::backdrop {
   justify-content: center;
   padding-top: 14vh;
   animation: thread-cmdk-fade 0.15s ease;
+  border: none;
+  margin: 0;
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  color: inherit;
+}
+
+dialog.thread-cmdk-overlay::backdrop {
+  background: transparent;
 }
 
 @keyframes thread-cmdk-fade {
@@ -5425,6 +5441,7 @@ dialog.thread-modal-backdrop::backdrop {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+dialog.thread-demo-expired-overlay,
 .thread-demo-expired-overlay {
   position: fixed;
   inset: 0;
@@ -5435,6 +5452,19 @@ dialog.thread-modal-backdrop::backdrop {
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  border: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  color: inherit;
+}
+
+dialog.thread-demo-expired-overlay::backdrop {
+  background: transparent;
 }
 
 .thread-demo-expired-card {

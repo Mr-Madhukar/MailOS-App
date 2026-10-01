@@ -39,14 +39,16 @@ Respond with JSON only:
 Do NOT include subject line or greeting like "Hi [Name]," — just the message body.
 Keep each reply direct and professional.`;
 
+const EMAIL_BRACKET_REGEX = /<([^<>]+)>/;
+
 function buildThreadSummary(messages: Array<{ from?: string; body: string; date?: string }>): string {
   return messages
     .slice(-5) // Last 5 messages for context
     .map((m, i) => {
       const from = m.from ?? "Unknown";
-      const date = m.date ? new Date(m.date).toLocaleDateString() : "";
+      const dateSuffix = m.date ? ` (${new Date(m.date).toLocaleDateString()})` : "";
       const body = m.body.slice(0, 400).replace(/\n{3,}/g, "\n\n");
-      return `[Message ${i + 1}] From: ${from}${date ? ` (${date})` : ""}\n${body}`;
+      return `[Message ${i + 1}] From: ${from}${dateSuffix}\n${body}`;
     })
     .join("\n\n---\n\n");
 }
@@ -80,7 +82,7 @@ export async function getSmartReplies(input: {
 
   const replyToRaw = lastExternalMessage?.from ?? thread.from ?? "";
   const replyToEmail = replyToRaw.includes("<")
-    ? (replyToRaw.match(/<([^>]+)>/)?.[1] ?? replyToRaw)
+    ? (EMAIL_BRACKET_REGEX.exec(replyToRaw)?.[1] ?? replyToRaw)
     : replyToRaw;
   const replyToName = replyToRaw.includes("<")
     ? replyToRaw.split("<")[0]?.trim() ?? replyToEmail

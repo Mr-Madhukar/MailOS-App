@@ -148,7 +148,7 @@ function mergeBusySlots(slots: Array<{ start: number; end: number }>) {
   const merged: Array<{ start: number; end: number }> = [sorted[0]!];
   for (let i = 1; i < sorted.length; i++) {
     const current = sorted[i]!;
-    const last = merged[merged.length - 1]!;
+    const last = merged.at(-1)!;
     if (current.start <= last.end) {
       last.end = Math.max(last.end, current.end);
     } else {
@@ -193,9 +193,11 @@ export function daysSince(iso?: string): number | null {
   return Math.max(0, Math.floor((Date.now() - parsed) / 86_400_000));
 }
 
+const EMAIL_BRACKET_REGEX = /<([^<>]+)>/;
+
 export function extractEmailAddress(value?: string): string | null {
   if (!value) return null;
-  const match = value.match(/<([^>]+)>/);
+  const match = EMAIL_BRACKET_REGEX.exec(value);
   if (match?.[1]) return match[1].trim().toLowerCase();
   if (value.includes("@")) return value.trim().toLowerCase();
   return null;

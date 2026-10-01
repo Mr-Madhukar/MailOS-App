@@ -11,12 +11,40 @@ const SHORTCUTS = [
   { keys: "Esc", action: "Close pane or modal" },
 ];
 
-export function ShortcutsHelp({ open, onCloseAction }: { open: boolean; onCloseAction: () => void }) {
+type ShortcutsHelpProps = Readonly<{
+  open: boolean;
+  onCloseAction: () => void;
+}>;
+
+export function ShortcutsHelp({ open, onCloseAction }: ShortcutsHelpProps) {
   if (!open) return null;
 
   return (
-    <div className="thread-cmdk-overlay" onClick={(e) => e.target === e.currentTarget && onCloseAction()}>
-      <div className="thread-cmdk" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style={{ maxWidth: 420 }}>
+    <dialog
+      open
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      className="thread-cmdk-overlay"
+      onCancel={(e) => {
+        e.preventDefault();
+        onCloseAction();
+      }}
+    >
+      <button
+        type="button"
+        className="thread-cmdk-backdrop-btn"
+        aria-label="Close shortcuts"
+        tabIndex={-1}
+        onClick={onCloseAction}
+        style={{
+          position: "fixed",
+          inset: 0,
+          border: "none",
+          background: "transparent",
+          cursor: "default",
+        }}
+      />
+      <div className="thread-cmdk" style={{ maxWidth: 420, position: "relative", zIndex: 1 }}>
         <div className="thread-cmdk-input" style={{ borderBottom: "1px solid var(--thread-line)" }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>Keyboard shortcuts</span>
           <span className="thread-app-kbd">?</span>
@@ -34,6 +62,6 @@ export function ShortcutsHelp({ open, onCloseAction }: { open: boolean; onCloseA
           ))}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

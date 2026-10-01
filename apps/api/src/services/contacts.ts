@@ -1,5 +1,4 @@
-import { and, desc, eq, ilike, or, sql } from "@repo/database";
-import db from "@repo/database";
+import db, { and, desc, eq, ilike, or, sql } from "@repo/database";
 import { threadContactsTable, threadMailCacheTable } from "@repo/database/schema";
 import { getInboxService } from "@repo/services/inbox";
 
@@ -33,7 +32,7 @@ export function parseThreadSender(from?: string, fromName?: string) {
 
   let displayName = fromName?.trim();
   if (!displayName && from?.includes("<")) {
-    displayName = from.replace(/<[^>]+>/, "").trim().replace(/^["']|["']$/g, "") || undefined;
+    displayName = from.replace(/<[^<>]+>/, "").trim().replace(/^["']/, "").replace(/["']$/, "") || undefined;
   }
 
   return { email, displayName };
@@ -124,15 +123,25 @@ export class DbContactsService implements ContactsService {
         ),
       );
 
+    const parsedCacheContacts = new Map<string, { email: string; displayName?: string }>();
     for (const sender of cacheSenders) {
       const parsed = parseThreadSender(sender.email ?? undefined, sender.displayName ?? undefined);
-      if (!parsed) continue;
-      await this.upsert(userId, {
-        email: parsed.email,
-        displayName: parsed.displayName,
-        source: "inbox",
-      });
-      fromCache += 1;
+      if (parsed && !parsedCacheContacts.has(parsed.email)) {
+        parsedCacheContacts.set(parsed.email, parsed);
+      }
+    }
+
+    if (parsedCacheContacts.size > 0) {
+      await Promise.all(
+        Array.from(parsedCacheContacts.values()).map((parsed) =>
+          this.upsert(userId, {
+            email: parsed.email,
+            displayName: parsed.displayName,
+            source: "inbox",
+          }),
+        ),
+      );
+      fromCache = parsedCacheContacts.size;
     }
 
     try {
@@ -147,15 +156,25 @@ export class DbContactsService implements ContactsService {
         }
       }
 
+      const parsedLiveContacts = new Map<string, { email: string; displayName?: string }>();
       for (const { from, fromName } of threads.values()) {
         const parsed = parseThreadSender(from, fromName);
-        if (!parsed) continue;
-        await this.upsert(userId, {
-          email: parsed.email,
-          displayName: parsed.displayName,
-          source: "inbox",
-        });
-        fromLive += 1;
+        if (parsed && !parsedLiveContacts.has(parsed.email)) {
+          parsedLiveContacts.set(parsed.email, parsed);
+        }
+      }
+
+      if (parsedLiveContacts.size > 0) {
+        await Promise.all(
+          Array.from(parsedLiveContacts.values()).map((parsed) =>
+            this.upsert(userId, {
+              email: parsed.email,
+              displayName: parsed.displayName,
+              source: "inbox",
+            }),
+          ),
+        );
+        fromLive = parsedLiveContacts.size;
       }
     } catch {
       /* inbox may be disconnected — cache-only sync still helps */
@@ -211,22 +230,33 @@ export class DbContactsService implements ContactsService {
     const cache = await mailCache.getHistoryMap(userId, ids);
     let imported = 0;
     const needsLive: string[] = [];
+    const cachedToUpsert = new Map<string, { email: string; displayName?: string }>();
 
     for (const id of ids) {
       const row = cache.get(id);
       if (row?.fromAddress?.includes("@")) {
         const parsed = parseThreadSender(row.fromAddress, row.fromName ?? undefined);
         if (parsed) {
-          await this.upsert(userId, {
-            email: parsed.email,
-            displayName: parsed.displayName,
-            source: "inbox",
-          });
-          imported += 1;
+          if (!cachedToUpsert.has(parsed.email)) {
+            cachedToUpsert.set(parsed.email, parsed);
+          }
           continue;
         }
       }
       needsLive.push(id);
+    }
+
+    if (cachedToUpsert.size > 0) {
+      await Promise.all(
+        Array.from(cachedToUpsert.values()).map((parsed) =>
+          this.upsert(userId, {
+            email: parsed.email,
+            displayName: parsed.displayName,
+            source: "inbox",
+          }),
+        ),
+      );
+      imported += cachedToUpsert.size;
     }
 
     type GmailHeader = { name?: string; value?: string };

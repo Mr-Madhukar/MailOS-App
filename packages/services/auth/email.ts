@@ -21,9 +21,11 @@ function isBrevoApiKey(key: string) {
   return key.startsWith("xkeysib-");
 }
 
+const SENDER_BRACKET_REGEX = /^([^<]+)\s*<([^<>]+)>$/;
+
 function parseSenderAddress(from: string) {
   const trimmed = from.trim();
-  const bracketMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+  const bracketMatch = SENDER_BRACKET_REGEX.exec(trimmed);
   if (bracketMatch) {
     return { name: bracketMatch[1]!.trim(), email: bracketMatch[2]!.trim() };
   }

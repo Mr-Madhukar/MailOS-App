@@ -65,7 +65,7 @@ const INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   // Mass-action abuse — these must be whole-phrase matches to avoid
   // blocking "send an email to everyone on the team" from a calendar context.
   {
-    pattern: /\b(email|send\s+(an?\s+email\s+)?to)\s+everyone\s+(in|from|on)\s+(my\s+)?(inbox|contacts|list)/i,
+    pattern: /\b(?:email|send\b.*?to)\s+everyone\s+(?:in|from|on)\s+(?:my\s+)?(?:inbox|contacts|list)/i,
     reason: "Bulk-send mass-action command detected",
   },
   {
@@ -112,6 +112,8 @@ function sanitizeHeader(value: string): string {
   return value.replace(/[\r\n]/g, "").trim();
 }
 
+const EMAIL_BRACKET_REGEX = /<([^<>]+)>/;
+
 const recipientSchema = z
   .string()
   .min(3)
@@ -119,9 +121,9 @@ const recipientSchema = z
   .transform(sanitizeHeader)
   .refine(
     (v) => {
-      const bracket = v.match(/<([^>]+)>/);
+      const bracket = EMAIL_BRACKET_REGEX.exec(v);
       const addr = bracket?.[1] ?? v;
-      return z.string().email().safeParse(addr.trim()).success;
+      return z.email().safeParse(addr.trim()).success;
     },
     { message: "Invalid recipient email address" },
   );
@@ -221,8 +223,8 @@ const DATA_FENCE_END = "[EMAIL_DATA_END]";
 export function fenceEmailData(content: string): string {
   // Strip any existing fence markers to prevent nesting attacks.
   const cleaned = content
-    .replace(/\[EMAIL_DATA_START\]/g, "[DATA]")
-    .replace(/\[EMAIL_DATA_END\]/g, "[/DATA]");
+    .replaceAll("[EMAIL_DATA_START]", "[DATA]")
+    .replaceAll("[EMAIL_DATA_END]", "[/DATA]");
   return `${DATA_FENCE_START}\n${cleaned}\n${DATA_FENCE_END}`;
 }
 

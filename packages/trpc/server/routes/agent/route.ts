@@ -2,8 +2,7 @@ import { z } from "zod";
 
 import { logger } from "@repo/logger";
 import { isAgentConfigured, runAgentChat } from "@repo/services/ai/agent";
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { agentChatHistoryTable } from "@repo/database/schema";
 import {
   appendAgentSessionTurn,
@@ -43,7 +42,7 @@ const sessionFocusSchema = z.object({
 });
 
 const sessionSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   title: z.string().nullable(),
   messages: z.array(historyMessageSchema),
   toolMemory: z.array(toolMemoryEntrySchema),
@@ -53,7 +52,7 @@ const sessionSchema = z.object({
 });
 
 const sessionListItemSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   title: z.string().nullable(),
   messageCount: z.number(),
   updatedAt: z.coerce.date(),
@@ -70,7 +69,7 @@ const actionCardSchema = z.object({
   href: z.string().optional(),
   lines: z.array(z.string()).optional(),
   disposition: z.enum(["sent", "queued"]).optional(),
-  queueItemId: z.string().uuid().optional(),
+  queueItemId: z.uuid().optional(),
   threadId: z.string().optional(),
 });
 
@@ -84,7 +83,7 @@ export const agentRouter = router({
         model: z.string().optional(),
       }),
     )
-    .query(async () => ({
+    .query(() => ({
       ready: isAgentConfigured(),
       model: isAgentConfigured() ? process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini" : undefined,
     })),
@@ -126,7 +125,7 @@ export const agentRouter = router({
           toolMemory: input.toolMemory,
         });
         if (result.actions.some((a) => a.kind === "email_queued" || a.kind === "calendar_queued")) {
-          invalidateBriefCache(ctx.user.id);
+          await invalidateBriefCache(ctx.user.id);
         }
         return {
           reply: result.reply,
@@ -153,7 +152,7 @@ export const agentRouter = router({
 
   getSession: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/sessions/{id}"), tags: TAGS } })
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.uuid() }))
     .output(sessionSchema.nullable())
     .query(async ({ ctx, input }) => {
       try {
@@ -187,7 +186,7 @@ export const agentRouter = router({
     .meta({ openapi: { method: "PATCH", path: getPath("/sessions/{id}"), tags: TAGS } })
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.uuid(),
         title: z.string().max(120).nullable().optional(),
         messages: z.array(historyMessageSchema).max(MAX_STORED_MESSAGES).optional(),
         toolMemory: z.array(toolMemoryEntrySchema).max(12).optional(),
@@ -210,7 +209,7 @@ export const agentRouter = router({
 
   deleteSession: protectedProcedure
     .meta({ openapi: { method: "DELETE", path: getPath("/sessions/{id}"), tags: TAGS } })
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.uuid() }))
     .output(z.object({ ok: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -225,7 +224,7 @@ export const agentRouter = router({
     .meta({ openapi: { method: "POST", path: getPath("/sessions/{id}/turn"), tags: TAGS } })
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.uuid(),
         userMessage: z.string().trim().min(1).max(4000),
         assistantReply: z.string().max(8000),
         toolMemory: z.array(toolMemoryEntrySchema).max(12),

@@ -11,30 +11,32 @@ let preloadPromise: Promise<void> | null = null;
 
 export async function preloadCorsairImportModules(): Promise<void> {
   if (oauthModule && setupModule) return;
-  if (!preloadPromise) {
-    preloadPromise = (async () => {
-      const [oauth, setup] = await Promise.all([
-        import("corsair/oauth"),
-        import("corsair/setup"),
-      ]);
-      oauthModule = oauth;
-      setupModule = setup;
-    })();
-  }
+  preloadPromise ??= (async () => {
+    const [oauth, setup] = await Promise.all([
+      import("corsair/oauth"),
+      import("corsair/setup"),
+    ]);
+    oauthModule = oauth;
+    setupModule = setup;
+  })();
   await preloadPromise;
 }
 
 export function getCorsairOAuthModule(): CorsairOAuthModule {
-  oauthModule ??= loadCorsairModule<CorsairOAuthModule>("oauth.js");
+  if (!oauthModule) {
+    loadCorsairModule("oauth.js");
+  }
   return oauthModule;
 }
 
 export function getCorsairSetupModule(): CorsairSetupModule {
-  setupModule ??= loadCorsairModule<CorsairSetupModule>("setup.js");
+  if (!setupModule) {
+    loadCorsairModule("setup.js");
+  }
   return setupModule;
 }
 
-function loadCorsairModule<T>(_subpath: string): T {
+function loadCorsairModule(_subpath: string): never {
   console.debug("loadCorsairModule called on:", _subpath);
   throw new Error(
     "Corsair submodule used before preload — call preloadCorsairImportModules() during serverless boot",

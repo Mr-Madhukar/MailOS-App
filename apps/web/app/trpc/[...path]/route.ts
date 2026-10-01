@@ -38,6 +38,132 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
   return headers;
 }
 
+function makeTimeoutResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error: {
+        message: "API is waking up — please try again in a few seconds.",
+        code: -32004,
+        data: { code: "TIMEOUT" },
+      },
+    },
+    { status: 503 },
+  );
+}
+
+async function fetchWithRetry(
+  upstream: string,
+  request: NextRequest,
+  headers: Headers,
+  body: ArrayBuffer | undefined,
+  attempt = 0,
+): Promise<Response | null> {
+  const isMutation = request.method !== "GET" && request.method !== "HEAD";
+  const maxAttempts = isMutation ? 1 : ATTEMPTS;
+  const timeoutMs = isMutation ? MUTATION_TIMEOUT_MS : ATTEMPT_TIMEOUT_MS;
+
+  try {
+    const res = await fetch(upstream, {
+      method: request.method,
+      headers,
+      body,
+      redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (res.status < 500 || attempt >= maxAttempts - 1) {
+      return res;
+    }
+  } catch {
+    if (attempt >= maxAttempts - 1) {
+      return null;
+    }
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+  return fetchWithRetry(upstream, request, headers, body, attempt + 1);
+}
+
+function createProxyResponse(bodyText: string, contentType: string, status: number, statusText: string): NextResponse {
+  if (contentType.includes("application/json")) {
+    try {
+      const json = JSON.parse(bodyText) as unknown;
+      return NextResponse.json(json, { status, statusText });
+    } catch {
+      // Fall through to plain text response on JSON parse failure
+    }
+  }
+
+  return new NextResponse(bodyText, {
+    status,
+    statusText,
+    headers: { "content-type": contentType },
+  });
+}
+
+function parseCookiePart(part: string, cookie: { httpOnly: boolean; path: string; maxAge?: number }) {
+  if (/^httponly$/i.test(part)) {
+    cookie.httpOnly = true;
+  } else if (/^path=/i.test(part)) {
+    cookie.path = part.substring(5).trim();
+  } else if (/^max-age=/i.test(part)) {
+    const parsed = Number.parseInt(part.substring(8).trim(), 10);
+    if (!Number.isNaN(parsed)) {
+      cookie.maxAge = parsed;
+    }
+  }
+}
+
+type ProxyCookie = {
+  name: string;
+  value: string;
+  httpOnly: boolean;
+  path: string;
+  maxAge?: number;
+  sameSite: "lax";
+};
+
+function parseSingleCookie(headerStr: string): ProxyCookie | null {
+  const parts = headerStr.split(";").map((p) => p.trim());
+  const firstPart = parts[0];
+  if (!firstPart) return null;
+
+  const eqIdx = firstPart.indexOf("=");
+  if (eqIdx === -1) return null;
+
+  const cookie: { httpOnly: boolean; path: string; maxAge?: number } = {
+    httpOnly: false,
+    path: "/",
+  };
+
+  for (const part of parts.slice(1)) {
+    if (part) parseCookiePart(part, cookie);
+  }
+
+  return {
+    name: firstPart.substring(0, eqIdx).trim(),
+    value: firstPart.substring(eqIdx + 1).trim(),
+    httpOnly: cookie.httpOnly,
+    path: cookie.path,
+    ...(cookie.maxAge !== undefined ? { maxAge: cookie.maxAge } : {}),
+    sameSite: "lax",
+  };
+}
+
+function forwardCookies(upstreamRes: Response, response: NextResponse) {
+  const rawSetCookie = upstreamRes.headers.get("set-cookie");
+  if (!rawSetCookie) return;
+
+  const setCookieHeaders = rawSetCookie.split(/,\s*(?=[a-zA-Z0-9_-]+=)/);
+  for (const headerStr of setCookieHeaders) {
+    const parsed = parseSingleCookie(headerStr);
+    if (parsed) {
+      response.cookies.set(parsed);
+    }
+  }
+}
+
 /** Proxy tRPC so auth Set-Cookie headers reach the browser (rewrites drop them). */
 async function proxyTrpc(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
@@ -50,124 +176,22 @@ async function proxyTrpc(request: NextRequest, context: { params: Promise<{ path
   const body =
     request.method !== "GET" && request.method !== "HEAD" ? await request.arrayBuffer() : undefined;
 
-  const isMutation = request.method !== "GET" && request.method !== "HEAD";
-  const maxAttempts = isMutation ? 1 : ATTEMPTS;
-  const timeoutMs = isMutation ? MUTATION_TIMEOUT_MS : ATTEMPT_TIMEOUT_MS;
-
-  let upstreamRes: Response | null = null;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      upstreamRes = await fetch(upstream, {
-        method: request.method,
-        headers,
-        body,
-        redirect: "manual",
-        cache: "no-store",
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-
-      if (upstreamRes.status < 500) break;
-
-      if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
-      }
-    } catch {
-      if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
-        continue;
-      }
-      return NextResponse.json(
-        {
-          error: {
-            message: "API is waking up — please try again in a few seconds.",
-            code: -32004,
-            data: { code: "TIMEOUT" },
-          },
-        },
-        { status: 503 },
-      );
-    }
-  }
-
+  const upstreamRes = await fetchWithRetry(upstream, request, headers, body);
   if (!upstreamRes) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "API is waking up — please try again in a few seconds.",
-          code: -32004,
-          data: { code: "TIMEOUT" },
-        },
-      },
-      { status: 503 },
-    );
+    return makeTimeoutResponse();
   }
 
   const bodyText = await upstreamRes.text();
   const contentType = upstreamRes.headers.get("content-type") ?? "application/json";
 
-  let response: NextResponse;
-  if (contentType.includes("application/json")) {
-    try {
-      const json = JSON.parse(bodyText) as unknown;
-      response = NextResponse.json(json, {
-        status: upstreamRes.status,
-        statusText: upstreamRes.statusText,
-      });
-    } catch {
-      response = new NextResponse(bodyText, {
-        status: upstreamRes.status,
-        statusText: upstreamRes.statusText,
-        headers: { "content-type": contentType },
-      });
-    }
-  } else {
-    response = new NextResponse(bodyText, {
-      status: upstreamRes.status,
-      statusText: upstreamRes.statusText,
-      headers: { "content-type": contentType },
-    });
-  }
+  const response = createProxyResponse(bodyText, contentType, upstreamRes.status, upstreamRes.statusText);
 
   // Prevent Vercel/CDN from gzip-transforming a plain body (ERR_CONTENT_DECODING_FAILED).
   response.headers.set("Cache-Control", "no-store, no-transform");
   response.headers.delete("content-encoding");
 
-  const rawSetCookie = upstreamRes.headers.get("set-cookie");
-  if (rawSetCookie) {
-    const setCookieHeaders = rawSetCookie.split(/,\s*(?=[a-zA-Z0-9_ -]+=)/);
-    for (const headerStr of setCookieHeaders) {
-      const parts = headerStr.split(";").map((p) => p.trim());
-      const firstPart = parts[0];
-      if (!firstPart) continue;
-      const eqIdx = firstPart.indexOf("=");
-      if (eqIdx === -1) continue;
-      const name = firstPart.substring(0, eqIdx).trim();
-      const value = firstPart.substring(eqIdx + 1).trim();
+  forwardCookies(upstreamRes, response);
 
-      let httpOnly = false;
-      let path = "/";
-      let maxAge: number | undefined;
-
-      for (const p of parts.slice(1)) {
-        if (!p) continue;
-        if (/^httponly$/i.test(p)) httpOnly = true;
-        if (/^path=/i.test(p)) path = p.substring(5).trim();
-        if (/^max-age=/i.test(p)) {
-          const parsed = Number.parseInt(p.substring(8).trim(), 10);
-          if (!Number.isNaN(parsed)) maxAge = parsed;
-        }
-      }
-
-      response.cookies.set({
-        name,
-        value,
-        httpOnly,
-        path,
-        ...(maxAge !== undefined ? { maxAge } : {}),
-        sameSite: "lax",
-      });
-    }
-  }
   return response;
 }
 

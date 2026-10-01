@@ -48,30 +48,32 @@ const DEMO_COPY: Record<
   },
 };
 
+type ConnectRequiredModalProps = Readonly<{
+  requirement: IntegrationRequirement;
+  isDemoUser?: boolean;
+  onCloseAction: () => void;
+}>;
+
 export function ConnectRequiredModal({
   requirement,
   isDemoUser,
   onCloseAction: onClose,
-}: {
-  requirement: IntegrationRequirement;
-  isDemoUser?: boolean;
-  onCloseAction: () => void;
-}) {
+}: ConnectRequiredModalProps) {
   const copy = isDemoUser ? DEMO_COPY[requirement] : COPY[requirement];
   const Icon = copy.icon;
 
   return (
-    <div
-      className="thread-demo-expired-overlay"
-      role="dialog"
-      aria-modal
+    <dialog
+      open
+      aria-modal="true"
       aria-label={copy.title}
-      onClick={onClose}
+      className="thread-demo-expired-overlay"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
     >
-      <div
-        className="thread-demo-expired-card thread-connect-gate-card"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="thread-demo-expired-card thread-connect-gate-card">
         <div className="thread-connect-gate-icon" data-service={requirement}>
           <Icon size={22} />
         </div>
@@ -126,7 +128,7 @@ export function ConnectRequiredModal({
           <X size={14} />
         </button>
       </div>
-    </div>
+    </dialog>
   );
 }
 

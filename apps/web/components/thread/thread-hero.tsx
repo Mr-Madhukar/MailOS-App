@@ -200,6 +200,7 @@ export function ThreadHero() {
                   muted
                   playsInline
                   aria-hidden
+                  tabIndex={-1}
                 />
                 <a href="#get-started" className="thread-btn-primary">
                   Connect Gmail

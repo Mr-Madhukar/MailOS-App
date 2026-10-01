@@ -60,15 +60,17 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
   );
 }
 
+type ThreadCommandProps = Readonly<{
+  open: boolean;
+  onCloseAction: () => void;
+  onShowShortcutsAction?: () => void;
+}>;
+
 export function ThreadCommand({
   open,
   onCloseAction,
   onShowShortcutsAction,
-}: {
-  open: boolean;
-  onCloseAction: () => void;
-  onShowShortcutsAction?: () => void;
-}) {
+}: ThreadCommandProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -206,8 +208,31 @@ export function ThreadCommand({
   let lastGroup = "";
 
   return (
-    <div className="thread-cmdk-overlay" onClick={(e) => e.target === e.currentTarget && onCloseAction()}>
-      <div className="thread-cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
+    <dialog
+      open
+      aria-modal="true"
+      aria-label="Command palette"
+      className="thread-cmdk-overlay"
+      onCancel={(e) => {
+        e.preventDefault();
+        onCloseAction();
+      }}
+    >
+      <button
+        type="button"
+        className="thread-cmdk-backdrop-btn"
+        aria-label="Close command palette"
+        tabIndex={-1}
+        onClick={onCloseAction}
+        style={{
+          position: "fixed",
+          inset: 0,
+          border: "none",
+          background: "transparent",
+          cursor: "default",
+        }}
+      />
+      <div className="thread-cmdk" style={{ position: "relative", zIndex: 1 }}>
         <div className="thread-cmdk-input">
           <Search size={16} style={{ opacity: 0.5 }} />
           <input
@@ -262,6 +287,6 @@ export function ThreadCommand({
           )}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

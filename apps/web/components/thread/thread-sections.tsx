@@ -4,14 +4,13 @@ import { useState } from "react";
 import {
   Calendar,
   ChevronDown,
-  Github,
   ListChecks,
   Mail,
   Search,
   Sparkles,
   Zap,
 } from "lucide-react";
-import { ThreadLogoMark, ThreadWordmark } from "./thread-logo";
+import { GithubIcon, ThreadLogoMark, ThreadWordmark } from "./thread-logo";
 import { Reveal } from "./thread-reveal";
 import { ThreadAgentDemo } from "./thread-agent-demo";
 
@@ -319,7 +318,7 @@ export function ThreadCta() {
     <section id="get-started" className="thread-shell thread-section">
       <div className="thread-frame" style={{ padding: "80px 32px", textAlign: "center" }}>
         <div className="thread-cta-wrap" style={{ marginBottom: 0 }}>
-          <video className="thread-mascot" src="/mascot.webm" autoPlay loop muted playsInline aria-hidden />
+          <video className="thread-mascot" src="/mascot.webm" autoPlay loop muted playsInline aria-hidden tabIndex={-1} />
           <a href="/sign-in" className="thread-btn-primary">
             Get started free
           </a>
@@ -341,7 +340,7 @@ export function ThreadFooter() {
           <ThreadLogoMark size={22} />
           <ThreadWordmark size="sm" />
           <span style={{ color: "var(--thread-line)" }}>|</span>
-          <Github size={14} style={{ opacity: 0.4 }} />
+          <GithubIcon size={14} style={{ opacity: 0.4 }} />
         </div>
         <div className="thread-footer-links">
           <a href="#faq">FAQ</a>

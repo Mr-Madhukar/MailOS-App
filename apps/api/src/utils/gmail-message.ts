@@ -34,7 +34,7 @@ function collectAttachments(payload: MessagePart | undefined): Array<{ filename:
 }
 
 export function decodeBase64Url(data: string): string {
-  const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
+  const normalized = data.replaceAll("-", "+").replaceAll("_", "/");
   return Buffer.from(normalized, "base64").toString("utf8");
 }
 
@@ -43,13 +43,13 @@ function stripHtmlToText(html: string): string {
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
+    .replace(/<[^<>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -172,7 +172,7 @@ export function buildRawEmail(input: {
 
 export function parseEmailAddress(value: string | undefined) {
   if (!value) return "";
-  const match = value.match(/<([^>]+)>/);
+  const match = /<([^<>]+)>/.exec(value);
   return (match?.[1] ?? value).trim();
 }
 
@@ -227,8 +227,8 @@ export function decodeHtmlEntities(text: string): string {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
 }
 
 export function parseGmailMessage(message: {
@@ -266,7 +266,7 @@ export function normalizeSubject(subject?: string) {
 
 export function displaySender(from?: string) {
   if (!from) return "Unknown";
-  const nameMatch = from.match(/^([^<]+)</);
+  const nameMatch = /^([^<]+)</.exec(from);
   if (nameMatch?.[1]) {
     return nameMatch[1].trim().replace(/^"|"$/g, "");
   }
@@ -286,6 +286,6 @@ export function suggestReplyTo(
     }
   }
 
-  const last = messages[messages.length - 1];
+  const last = messages.at(-1);
   return parseEmailAddress(last?.to) || parseEmailAddress(messages[0]?.from) || "";
 }

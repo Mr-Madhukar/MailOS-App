@@ -17,7 +17,7 @@ const TAGS = ["Queue"];
 const getPath = generatePath("/queue");
 
 const queueItemSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   kind: z.enum(["email_send", "email_draft", "draft_send", "calendar_invite", "meeting_bundle", "calendar_archive", "calendar_delete", "calendar_update"]),
   title: z.string(),
   preview: z.string().optional(),
@@ -32,7 +32,7 @@ const queueItemSchema = z.object({
 export const queueRouter = router({
   pendingCount: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/pending-count"), tags: TAGS } })
-    .input(z.object({}).passthrough().optional())
+    .input(z.object({}))
     .output(z.object({ count: z.number().int() }))
     .query(async ({ ctx }) => {
       try {
@@ -202,7 +202,7 @@ export const queueRouter = router({
       try {
         const queue = getQueueService();
         const item = await queue.enqueueQuickAddCalendar(ctx.user.id, input, { origin: "calendar" });
-        invalidateBriefCache(ctx.user.id);
+        await invalidateBriefCache(ctx.user.id);
         return item;
       } catch (error) {
         mapServiceError(error);
@@ -223,7 +223,7 @@ export const queueRouter = router({
       try {
         const queue = getQueueService();
         const item = await queue.enqueueDraftSend(ctx.user.id, input, { origin: "inbox" });
-        invalidateBriefCache(ctx.user.id);
+        await invalidateBriefCache(ctx.user.id);
         return item;
       } catch (error) {
         mapServiceError(error);
@@ -234,7 +234,7 @@ export const queueRouter = router({
     .meta({ openapi: { method: "POST", path: getPath("/approve"), tags: TAGS } })
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.uuid(),
         archive: z
           .object({
             startDateTime: z.string().min(1),
@@ -251,7 +251,7 @@ export const queueRouter = router({
         const result = await queue.approve(ctx.user.id, input.id, { archive: input.archive });
         // Sending or creating events invalidates the cached brief so the user
         // sees accurate "Needs attention" items when they return to /brief.
-        invalidateBriefCache(ctx.user.id);
+        await invalidateBriefCache(ctx.user.id);
         return result;
       } catch (error) {
         mapServiceError(error);
@@ -260,13 +260,13 @@ export const queueRouter = router({
 
   dismiss: protectedProcedure
     .meta({ openapi: { method: "POST", path: getPath("/dismiss"), tags: TAGS } })
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.uuid() }))
     .output(queueItemSchema)
     .mutation(async ({ ctx, input }) => {
       try {
         const queue = getQueueService();
         const result = await queue.dismiss(ctx.user.id, input.id);
-        invalidateBriefCache(ctx.user.id);
+        await invalidateBriefCache(ctx.user.id);
         return result;
       } catch (error) {
         mapServiceError(error);
