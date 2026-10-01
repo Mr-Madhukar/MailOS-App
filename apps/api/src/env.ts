@@ -1,7 +1,17 @@
 import { z } from "zod";
 
 function normalizeEnvUrl(value: string) {
-  return value.trim().replace(/^["']+/, "").replace(/["']+$/, "").replace(/\/+$/, "");
+  let url = value.trim();
+  while (url.startsWith('"') || url.startsWith("'")) {
+    url = url.slice(1);
+  }
+  while (url.endsWith('"') || url.endsWith("'")) {
+    url = url.slice(0, -1);
+  }
+  while (url.endsWith("/")) {
+    url = url.slice(0, -1);
+  }
+  return url;
 }
 
 function emptyToUndefined(value: unknown) {

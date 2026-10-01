@@ -21,13 +21,15 @@ function isBrevoApiKey(key: string) {
   return key.startsWith("xkeysib-");
 }
 
-const SENDER_BRACKET_REGEX = /^([^<]+)\s*<([^<>]+)>$/;
-
 function parseSenderAddress(from: string) {
   const trimmed = from.trim();
-  const bracketMatch = SENDER_BRACKET_REGEX.exec(trimmed);
-  if (bracketMatch) {
-    return { name: bracketMatch[1]!.trim(), email: bracketMatch[2]!.trim() };
+  const ltIndex = trimmed.lastIndexOf("<");
+  if (ltIndex > 0 && trimmed.endsWith(">")) {
+    const name = trimmed.slice(0, ltIndex).trim();
+    const email = trimmed.slice(ltIndex + 1, -1).trim();
+    if (name && email && !email.includes("<") && !email.includes(">")) {
+      return { name, email };
+    }
   }
   return {
     name: env.EMAIL_SENDER_NAME?.trim() || "Thread",

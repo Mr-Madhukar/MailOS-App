@@ -113,19 +113,28 @@ function parseFromToRange(text: string): {
   if (!fromMatch) return null;
 
   const afterFrom = text.slice(fromMatch.index + fromMatch[0].length);
-  const sepMatch = /\s*(?:to|-)\s*/i.exec(afterFrom);
+  const sepMatch = /\bto\b|-/i.exec(afterFrom);
   if (!sepMatch) return null;
 
   const rawStart = afterFrom.slice(0, sepMatch.index).trim();
+  const start = parseClockToken(rawStart);
+  if (!start) return null;
+
   const afterSep = afterFrom.slice(sepMatch.index + sepMatch[0].length);
-  const endWordMatch = /^(\S+(?:\s*[ap]m)?)/i.exec(afterSep);
+  const trimmedAfter = afterSep.trimStart();
+  const leadingSpaces = afterSep.length - trimmedAfter.length;
+  const endWordMatch = /^(\S+(?:\s*[ap]m)?)/i.exec(trimmedAfter);
   if (!endWordMatch) return null;
 
-  const start = parseClockToken(rawStart);
   const end = parseClockToken(endWordMatch[1] ?? "");
-  if (!start || !end) return null;
+  if (!end) return null;
 
-  const matchedLen = fromMatch[0].length + sepMatch.index + sepMatch[0].length + endWordMatch[0].length;
+  const matchedLen =
+    fromMatch[0].length +
+    sepMatch.index +
+    sepMatch[0].length +
+    leadingSpaces +
+    endWordMatch[0].length;
   const matchedText = text.slice(fromMatch.index, fromMatch.index + matchedLen);
   return { start, end, rest: stripOnce(text, matchedText) };
 }
