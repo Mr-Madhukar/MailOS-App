@@ -336,35 +336,56 @@ app.get("/openapi.json", requireOpenApiDocsAuth, (_req, res) => {
 
 logger.debug(`docs: ${env.BASE_URL}/docs`);
 
-try {
-  const { apiReference } = await import("@scalar/express-api-reference");
-  app.use(
-    "/docs",
-    requireOpenApiDocsAuth,
-    apiReference({
-      url: "/openapi.json",
-      theme: "purple",
-      layout: "modern",
-      metaData: {
-        title: "Thread API Reference",
-        description:
-          "Corsair-powered Gmail & Calendar — REST, MCP (57 tools), webhooks, approval queue. Built for the Corsair Hackathon.",
-      },
-      authentication: {
-        preferredSecurityScheme: "cookieAuth",
-      },
-      persistAuth: true,
-      defaultHttpClient: {
-        targetKey: "node",
-        clientKey: "fetch",
-      },
-    }),
-  );
-} catch (error) {
-  logger.warn("API docs disabled", {
-    message: error instanceof Error ? error.message : error,
-  });
+let scalarHandler: ((req: Request, res: Response, next: NextFunction) => unknown) | null = null;
+let scalarInitPromise: Promise<void> | null = null;
+
+async function getScalarHandler() {
+  if (scalarHandler) return scalarHandler;
+  scalarInitPromise ??= (async () => {
+    try {
+      const { apiReference } = await import("@scalar/express-api-reference");
+      scalarHandler = apiReference({
+        url: "/openapi.json",
+        theme: "purple",
+        layout: "modern",
+        metaData: {
+          title: "Thread API Reference",
+          description:
+            "Corsair-powered Gmail & Calendar — REST, MCP (57 tools), webhooks, approval queue. Built for the Corsair Hackathon.",
+        },
+        authentication: {
+          preferredSecurityScheme: "cookieAuth",
+        },
+        persistAuth: true,
+        defaultHttpClient: {
+          targetKey: "node",
+          clientKey: "fetch",
+        },
+      }) as unknown as (req: Request, res: Response, next: NextFunction) => unknown;
+    } catch (error) {
+      logger.warn("API docs disabled", {
+        message: error instanceof Error ? error.message : error,
+      });
+    }
+  })();
+  await scalarInitPromise;
+  return scalarHandler;
 }
+
+app.use("/docs", requireOpenApiDocsAuth, async (req, res, next) => {
+  try {
+    const handler = await getScalarHandler();
+    if (!handler) {
+      return res.status(503).json({
+        error: "API docs unavailable",
+        hint: "Check server logs for initialization errors",
+      });
+    }
+    return handler(req, res, next);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 app.use("/auth", googleAuthRouter);
 app.use("/auth/corsair", corsairAuthRouter);

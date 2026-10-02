@@ -52,7 +52,7 @@ export function queryBoundsForView(mode: CalendarViewMode, anchor: Date) {
   const days = getVisibleDays(mode, anchor);
   const start = new Date(days[0]!.date);
   start.setHours(0, 0, 0, 0);
-  const end = new Date(days[days.length - 1]!.date);
+  const end = new Date(days.at(-1)!.date);
   end.setHours(23, 59, 59, 999);
   const pad = 24 * 60 * 60 * 1000;
   return {

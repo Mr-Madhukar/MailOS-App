@@ -88,6 +88,47 @@ interface McpTool {
   inputSchema: Record<string, unknown>;
 }
 
+const threadIdSchema: Record<string, unknown> = {
+  type: "object",
+  required: ["threadId"],
+  properties: {
+    threadId: { type: "string", description: "Gmail thread ID." },
+  },
+};
+
+const itemIdSchema: Record<string, unknown> = {
+  type: "object",
+  required: ["itemId"],
+  properties: {
+    itemId: { type: "string", description: "Queue item ID." },
+  },
+};
+
+const eventIdSchema: Record<string, unknown> = {
+  type: "object",
+  required: ["eventId"],
+  properties: {
+    eventId: { type: "string", description: "Calendar event ID." },
+  },
+};
+
+const draftIdSchema: Record<string, unknown> = {
+  type: "object",
+  required: ["draftId"],
+  properties: {
+    draftId: { type: "string", description: "Gmail draft ID." },
+  },
+};
+
+const searchDbSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    query: { type: "string" },
+    limit: { type: "number" },
+    offset: { type: "number" },
+  },
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 // Tool registry
 // ────────────────────────────────────────────────────────────────────────────
@@ -133,13 +174,7 @@ const MCP_TOOLS: McpTool[] = [
     name: "get_thread",
     description:
       "Retrieve the full content of a Gmail thread including all messages and their bodies.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "list_queue",
@@ -161,24 +196,12 @@ const MCP_TOOLS: McpTool[] = [
     name: "approve_queue_item",
     description:
       "Approve a pending queue item. For emails this triggers the actual Gmail send; for calendar invites it creates the event.",
-    inputSchema: {
-      type: "object",
-      required: ["itemId"],
-      properties: {
-        itemId: { type: "string", description: "Queue item ID to approve." },
-      },
-    },
+    inputSchema: itemIdSchema,
   },
   {
     name: "dismiss_queue_item",
     description: "Dismiss (reject) a pending queue item without sending.",
-    inputSchema: {
-      type: "object",
-      required: ["itemId"],
-      properties: {
-        itemId: { type: "string", description: "Queue item ID to dismiss." },
-      },
-    },
+    inputSchema: itemIdSchema,
   },
   {
     name: "get_gmail_connection_status",
@@ -278,38 +301,22 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "archive_thread",
     description: "Archive a Gmail thread (remove from inbox). Requires explicit user intent.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string", description: "Gmail thread ID." } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "star_thread",
     description: "Star a Gmail thread via Corsair (adds STARRED label). Use to bookmark important emails.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string", description: "Gmail thread ID." } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "unstar_thread",
     description: "Remove the star from a Gmail thread via Corsair.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string", description: "Gmail thread ID." } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "mark_important",
     description: "Mark a Gmail thread as important via Corsair (adds IMPORTANT label).",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string", description: "Gmail thread ID." } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "get_daily_brief",
@@ -324,13 +331,7 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "get_smart_replies",
     description: "Get 3 AI-generated smart reply suggestions for a Gmail thread. Uses full thread context from Corsair Gmail.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID to generate replies for." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "apply_label",
@@ -359,20 +360,12 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "trash_thread",
     description: "Move a Gmail thread to trash via Corsair. Use only when user explicitly wants to delete an email.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string", description: "Gmail thread ID." } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "delete_draft",
     description: "Permanently delete a Gmail draft by id via Corsair. Use when user wants to discard a draft.",
-    inputSchema: {
-      type: "object",
-      required: ["draftId"],
-      properties: { draftId: { type: "string", description: "Gmail draft ID to delete." } },
-    },
+    inputSchema: draftIdSchema,
   },
   {
     name: "get_meeting_prep",
@@ -389,13 +382,7 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "get_thread_context",
     description: "Generate a smart context summary for an email thread: key people, action items, related emails, and sentiment. Fetches via Corsair Gmail and synthesizes with OpenAI.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "get_missed_followups",
@@ -449,13 +436,7 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "cancel_event",
     description: "Queue cancellation of a Google Calendar event for human approval (HITL). Notifies attendees on approve via Corsair cancel — use dismiss to abort.",
-    inputSchema: {
-      type: "object",
-      required: ["eventId"],
-      properties: {
-        eventId: { type: "string", description: "Google Calendar event ID to cancel." },
-      },
-    },
+    inputSchema: eventIdSchema,
   },
   {
     name: "list_drafts",
@@ -470,24 +451,12 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "get_draft",
     description: "Fetch a specific Gmail draft by ID via Corsair Gmail API, including full message content.",
-    inputSchema: {
-      type: "object",
-      required: ["draftId"],
-      properties: {
-        draftId: { type: "string", description: "Gmail draft ID." },
-      },
-    },
+    inputSchema: draftIdSchema,
   },
   {
     name: "mark_thread_read",
     description: "Mark a Gmail thread as read via Corsair Gmail API (removes UNREAD label).",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "get_contact_intel",
@@ -504,36 +473,18 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "summarize_thread",
     description: "Generate an AI summary of an email thread: key decisions, action items, and next steps. Fetches full thread via Corsair Gmail and summarizes with OpenAI.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   // ── 5 new tools (39 total) ──────────────────────────────────────────────────
   {
     name: "mark_not_important",
     description: "Remove the Important flag from a Gmail thread via Corsair (removes IMPORTANT label).",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "get_calendar_event",
     description: "Fetch full details of a single Google Calendar event by ID via Corsair: title, time, location, attendees, description.",
-    inputSchema: {
-      type: "object",
-      required: ["eventId"],
-      properties: {
-        eventId: { type: "string", description: "Google Calendar event ID." },
-      },
-    },
+    inputSchema: eventIdSchema,
   },
   {
     name: "find_meeting_slots",
@@ -589,13 +540,7 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "mark_thread_unread",
     description: "Add the UNREAD label to a Gmail thread via Corsair — the reverse of mark_thread_read. Useful for flagging threads that need revisiting.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "quick_add_event",
@@ -611,35 +556,17 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "send_draft",
     description: "Queue sending an existing Gmail draft for approval. On approve, Corsair drafts.send runs via Gmail.",
-    inputSchema: {
-      type: "object",
-      required: ["draftId"],
-      properties: {
-        draftId: { type: "string", description: "Gmail draft ID to send." },
-      },
-    },
+    inputSchema: draftIdSchema,
   },
   {
     name: "mute_thread",
     description: "Mute a Gmail thread via Corsair (adds MUTE label, removes from INBOX). Future messages in this thread will skip the inbox. Useful for silencing noisy threads without archiving.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID to mute." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "unmute_thread",
     description: "Unmute a Gmail thread via Corsair (removes MUTE label, restores to INBOX). Reverses a previous mute_thread action.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: {
-        threadId: { type: "string", description: "Gmail thread ID to unmute." },
-      },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "update_draft",
@@ -699,32 +626,17 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "delete_thread",
     description: "Permanently delete a Gmail thread via Corsair threads.delete.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string" } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "untrash_thread",
     description: "Restore a Gmail thread from trash via Corsair threads.untrash.",
-    inputSchema: {
-      type: "object",
-      required: ["threadId"],
-      properties: { threadId: { type: "string" } },
-    },
+    inputSchema: threadIdSchema,
   },
   {
     name: "search_threads_db",
     description: "Search synced Gmail threads via corsair.gmail.db.threads.search (local Corsair DB cache).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        limit: { type: "number" },
-        offset: { type: "number" },
-      },
-    },
+    inputSchema: searchDbSchema,
   },
   {
     name: "search_messages_db",
@@ -742,26 +654,12 @@ const MCP_TOOLS: McpTool[] = [
   {
     name: "search_events_db",
     description: "Search synced Google Calendar events via googlecalendar.db.events.search.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        limit: { type: "number" },
-        offset: { type: "number" },
-      },
-    },
+    inputSchema: searchDbSchema,
   },
   {
     name: "search_calendars_db",
     description: "Search synced Google Calendars via googlecalendar.db.calendars.search.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        limit: { type: "number" },
-        offset: { type: "number" },
-      },
-    },
+    inputSchema: searchDbSchema,
   },
   {
     name: "search_drafts_db",
@@ -1338,6 +1236,24 @@ async function handleDbSearchTools(
   }
 }
 
+async function listOrSearchThreads(
+  inbox: ReturnType<typeof getInboxService>,
+  userId: string,
+  opts: { maxResults: number; query?: string },
+) {
+  const result = await inbox.listThreads(userId, opts);
+  return toolResult(
+    result.threads.map((t) => ({
+      id: t.id,
+      subject: t.subject ?? "(no subject)",
+      from: t.fromName ?? t.from ?? "Unknown",
+      snippet: t.snippet?.slice(0, 120),
+      unread: t.unread,
+      date: t.date,
+    })),
+  );
+}
+
 async function handleEmailQueryTools(
   name: string,
   args: Record<string, unknown>,
@@ -1348,32 +1264,12 @@ async function handleEmailQueryTools(
     case "list_inbox": {
       const maxResults = Math.min(Number(args.maxResults ?? 20), 50);
       const query = typeof args.query === "string" ? args.query : undefined;
-      const result = await inbox.listThreads(userId, { maxResults, query });
-      return toolResult(
-        result.threads.map((t) => ({
-          id: t.id,
-          subject: t.subject ?? "(no subject)",
-          from: t.fromName ?? t.from ?? "Unknown",
-          snippet: t.snippet?.slice(0, 120),
-          unread: t.unread,
-          date: t.date,
-        })),
-      );
+      return listOrSearchThreads(inbox, userId, { maxResults, query });
     }
     case "search_inbox": {
       const query = String(args.query ?? "");
       const maxResults = Math.min(Number(args.maxResults ?? 10), 50);
-      const result = await inbox.listThreads(userId, { maxResults, query });
-      return toolResult(
-        result.threads.map((t) => ({
-          id: t.id,
-          subject: t.subject ?? "(no subject)",
-          from: t.fromName ?? t.from ?? "Unknown",
-          snippet: t.snippet?.slice(0, 120),
-          unread: t.unread,
-          date: t.date,
-        })),
-      );
+      return listOrSearchThreads(inbox, userId, { maxResults, query });
     }
     case "get_thread": {
       const threadId = String(args.threadId ?? "");
@@ -1404,54 +1300,62 @@ async function handleThreadStatusTools(
   userId: string,
   inbox: ReturnType<typeof getInboxService>,
 ): Promise<{ content: Array<{ type: string; text: string }> } | null> {
-  const STATUS_ACTIONS = new Set([
-    "archive_thread", "star_thread", "unstar_thread", "mark_important",
-    "mark_not_important", "trash_thread", "untrash_thread", "delete_thread",
-    "mark_thread_read", "mark_thread_unread", "mute_thread", "unmute_thread",
-  ]);
-  if (!STATUS_ACTIONS.has(name)) return null;
+  const actions: Record<string, () => Promise<unknown>> = {
+    archive_thread: async () => {
+      await inbox.archiveThread(userId, threadId);
+      return { success: true, threadId };
+    },
+    star_thread: async () => {
+      await inbox.starThread(userId, threadId);
+      return { success: true, threadId, action: "starred" };
+    },
+    unstar_thread: async () => {
+      await inbox.unstarThread(userId, threadId);
+      return { success: true, threadId, action: "unstarred" };
+    },
+    mark_important: async () => {
+      await inbox.markImportant(userId, threadId);
+      return { success: true, threadId, action: "marked_important" };
+    },
+    mark_not_important: async () => {
+      await inbox.markNotImportant(userId, threadId);
+      return { success: true, threadId, action: "marked_not_important" };
+    },
+    trash_thread: async () => {
+      await inbox.trashThread(userId, threadId);
+      return { success: true, threadId, action: "trashed" };
+    },
+    untrash_thread: async () => {
+      await inbox.untrashThread(userId, threadId);
+      return { ok: true, threadId, untrashed: true };
+    },
+    delete_thread: async () => {
+      await inbox.deleteThread(userId, threadId);
+      return { ok: true, threadId, deleted: true };
+    },
+    mark_thread_read: async () => {
+      await inbox.markThreadRead(userId, threadId);
+      return { success: true, threadId, action: "marked_read" };
+    },
+    mark_thread_unread: async () => {
+      await inbox.markThreadUnread(userId, threadId);
+      return { ok: true, threadId };
+    },
+    mute_thread: async () => {
+      await inbox.muteThread(userId, threadId);
+      return { ok: true, threadId, muted: true };
+    },
+    unmute_thread: async () => {
+      await inbox.unmuteThread(userId, threadId);
+      return { ok: true, threadId, muted: false };
+    },
+  };
+
+  const action = actions[name];
+  if (!action) return null;
   if (!threadId) return toolResult({ success: false, error: "threadId is required" });
 
-  switch (name) {
-    case "archive_thread":
-      await inbox.archiveThread(userId, threadId);
-      return toolResult({ success: true, threadId });
-    case "star_thread":
-      await inbox.starThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "starred" });
-    case "unstar_thread":
-      await inbox.unstarThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "unstarred" });
-    case "mark_important":
-      await inbox.markImportant(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_important" });
-    case "mark_not_important":
-      await inbox.markNotImportant(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_not_important" });
-    case "trash_thread":
-      await inbox.trashThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "trashed" });
-    case "untrash_thread":
-      await inbox.untrashThread(userId, threadId);
-      return toolResult({ ok: true, threadId, untrashed: true });
-    case "delete_thread":
-      await inbox.deleteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, deleted: true });
-    case "mark_thread_read":
-      await inbox.markThreadRead(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_read" });
-    case "mark_thread_unread":
-      await inbox.markThreadUnread(userId, threadId);
-      return toolResult({ ok: true, threadId });
-    case "mute_thread":
-      await inbox.muteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, muted: true });
-    case "unmute_thread":
-      await inbox.unmuteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, muted: false });
-    default:
-      return null;
-  }
+  return toolResult(await action());
 }
 
 function parseOptionalStringArray(value: unknown): string[] | undefined {

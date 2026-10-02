@@ -27,6 +27,16 @@ import {
 } from "../utils/gmail-message";
 import { ensureCorsairTenant } from "./corsair-tenant";
 
+export type OutboundEmailPayload = {
+  to: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+  cc?: string;
+  bcc?: string;
+  attachments?: Array<{ filename: string; mimeType: string; contentBase64: string }>;
+};
+
 // ── Corsair SDK typed wrappers ────────────────────────────────────────────────
 import type { SelectMailCacheRow } from "@repo/database/schema";
 
@@ -100,12 +110,18 @@ export async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let cursor = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await worker(items[index]!, index);
-    }
-  });
+
+  async function next(): Promise<void> {
+    if (cursor >= items.length) return;
+    const index = cursor++;
+    results[index] = await worker(items[index]!, index);
+    return next();
+  }
+
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    () => next(),
+  );
   await Promise.all(runners);
   return results;
 }
@@ -536,7 +552,7 @@ export class CorsairInboxService implements InboxService {
         );
         const unread = labelIds.includes("UNREAD");
         const lastMessageAt = parseHeaderDate(dateHeader);
-        const last = messages[messages.length - 1];
+        const last = messages.at(-1);
         const rawSnippet = detail.snippet ?? last?.snippet ?? "";
 
         const thread: InboxThread = {
@@ -600,7 +616,7 @@ export class CorsairInboxService implements InboxService {
     messages: GmailMetadataMessage[],
   ): Promise<{ subject?: string; fromRaw?: string; dateHeader?: string }> {
     const first = messages[0];
-    const last = messages[messages.length - 1] ?? first;
+    const last = messages.at(-1) ?? first;
 
     let normalized = normalizeSubject(findHeaderInThreadMessages(messages, "Subject", "first"));
     let fromRaw = findHeaderInThreadMessages(messages, "From", "last");
@@ -762,7 +778,7 @@ export class CorsairInboxService implements InboxService {
 
     const firstHeaders = thread.messages?.[0]?.payload?.headers ?? [];
     const subject = normalizeSubject(getHeader(firstHeaders, "Subject"));
-    const last = messages[messages.length - 1]!;
+    const last = messages.at(-1)!;
 
     return {
       id: thread.id,
@@ -788,25 +804,23 @@ export class CorsairInboxService implements InboxService {
     };
   }
 
-  async sendMessage(
+  private async prepareOutboundEmail(
     tenantId: string,
-    input: {
-      to: string;
-      subject: string;
-      body: string;
-      threadId?: string;
-      cc?: string;
-      bcc?: string;
-      attachments?: Array<{ filename: string; mimeType: string; contentBase64: string }>;
-    },
+    input: OutboundEmailPayload,
+    actionDescription: string,
   ) {
     const status = await this.getConnectionStatus(tenantId);
     if (status.gmail !== "connected") {
-      throw serviceError("PRECONDITION_FAILED", "Connect Gmail in Settings to send this email.");
+      throw serviceError("PRECONDITION_FAILED", `Connect Gmail in Settings to ${actionDescription}.`);
     }
 
     const corsair = getCorsair().withTenant(tenantId);
     const raw = buildRawEmail(input);
+    return { corsair, raw };
+  }
+
+  async sendMessage(tenantId: string, input: OutboundEmailPayload) {
+    const { corsair, raw } = await this.prepareOutboundEmail(tenantId, input, "send this email");
     const result = await corsair.gmail.api.messages.send({
       raw,
       threadId: input.threadId,
@@ -815,25 +829,8 @@ export class CorsairInboxService implements InboxService {
     return { id: result.id, threadId: result.threadId ?? input.threadId };
   }
 
-  async createDraft(
-    tenantId: string,
-    input: {
-      to: string;
-      subject: string;
-      body: string;
-      threadId?: string;
-      cc?: string;
-      bcc?: string;
-      attachments?: Array<{ filename: string; mimeType: string; contentBase64: string }>;
-    },
-  ) {
-    const status = await this.getConnectionStatus(tenantId);
-    if (status.gmail !== "connected") {
-      throw serviceError("PRECONDITION_FAILED", "Connect Gmail in Settings to save this draft.");
-    }
-
-    const corsair = getCorsair().withTenant(tenantId);
-    const raw = buildRawEmail(input);
+  async createDraft(tenantId: string, input: OutboundEmailPayload) {
+    const { corsair, raw } = await this.prepareOutboundEmail(tenantId, input, "save this draft");
     const result = await corsair.gmail.api.drafts.create({
       draft: {
         message: {
@@ -1176,9 +1173,13 @@ export class CorsairInboxService implements InboxService {
     const status = await this.getConnectionStatus(tenantId);
     if (status.gmail !== "connected") throw new Error("Gmail is not connected");
     const corsair = getCorsair().withTenant(tenantId);
+    const threads = await Promise.all(
+      opts.threadIds.map((threadId) =>
+        corsair.gmail.api.threads.get({ id: threadId, format: "minimal" }),
+      ),
+    );
     const messageIds: string[] = [];
-    for (const threadId of opts.threadIds) {
-      const thread = await corsair.gmail.api.threads.get({ id: threadId, format: "minimal" });
+    for (const thread of threads) {
       for (const msg of thread.messages ?? []) {
         if (msg.id) messageIds.push(msg.id);
       }
@@ -1191,9 +1192,9 @@ export class CorsairInboxService implements InboxService {
       });
     }
     if (opts.removeLabelIds?.includes("INBOX")) {
-      for (const threadId of opts.threadIds) {
-        await mailCache.remove(tenantId, threadId);
-      }
+      await Promise.all(
+        opts.threadIds.map((threadId) => mailCache.remove(tenantId, threadId)),
+      );
     }
     if (opts.removeLabelIds?.includes("UNREAD")) {
       await mailCache.upsertMany(

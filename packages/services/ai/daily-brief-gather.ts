@@ -100,7 +100,7 @@ function isAwaitingUserReply(
     return { awaiting: Boolean(thread.unread), daysWaiting: daysSince(thread.date), lastMessageFrom: thread.from };
   }
 
-  const last = messages[messages.length - 1]!;
+  const last = messages.at(-1)!;
   const lastFrom = extractEmailAddress(last.from) ?? last.from ?? "";
   const user = normalizeEmail(userEmail);
 
@@ -301,6 +301,103 @@ async function buildBriefMeetings(
   });
 }
 
+async function rankBriefThreads(
+  threads: InboxThread[],
+  gmailConnected: boolean,
+): Promise<string[]> {
+  const fallback = threads.map((t) => t.id);
+  const canRank =
+    threads.length > 1 && isOpenAiConfigured() && (gmailConnected || threads.length > 0);
+  if (!canRank) {
+    return fallback;
+  }
+  try {
+    return await rankInboxThreads(
+      threads.slice(0, 20).map((t) => ({
+        id: t.id,
+        snippet: t.snippet,
+        subject: t.subject,
+        from: t.fromName ?? t.from,
+      })),
+    );
+  } catch {
+    return fallback;
+  }
+}
+
+async function loadDetailThreads(
+  inbox: ReturnType<typeof getInboxService>,
+  tenantId: string,
+  detailIds: string[],
+  cachedById: Map<string, InboxThread>,
+  userEmail?: string,
+  gmailConnected = false,
+): Promise<Array<InboxThread | null>> {
+  if (!gmailConnected) {
+    return detailIds.map((id) => cachedById.get(id) ?? null);
+  }
+
+  return await Promise.all(
+    detailIds.map(async (id) => {
+      try {
+        return await inbox.getThread(tenantId, id, { userEmail });
+      } catch {
+        return null;
+      }
+    }),
+  );
+}
+
+function buildThreadSnapshots(
+  threads: Array<InboxThread | null>,
+  userRepliedThreadIds: Set<string>,
+  userEmail?: string,
+  gmailConnected = false,
+): BriefThreadSnapshot[] {
+  const snapshots: BriefThreadSnapshot[] = [];
+  for (const thread of threads) {
+    if (!thread) continue;
+    if (gmailConnected && !thread.unread) continue;
+    const reply = isAwaitingUserReply(thread, userEmail);
+    const alreadyReplied = userRepliedThreadIds.has(thread.id);
+    snapshots.push(
+      threadSnapshot(thread, {
+        awaitingReply: alreadyReplied ? false : reply.awaiting,
+        daysWaiting: alreadyReplied ? null : reply.daysWaiting,
+        lastMessageFrom: reply.lastMessageFrom,
+      }),
+    );
+  }
+  return snapshots;
+}
+
+function isWaitingOnRecipientReply(thread: InboxThread, userEmail?: string): boolean {
+  const messages = thread.messages ?? [];
+  if (messages.length === 0) {
+    return daysSince(thread.date) != null;
+  }
+  const last = messages.at(-1);
+  if (!last) return false;
+  const lastFrom = extractEmailAddress(last.from) ?? "";
+  const user = normalizeEmail(userEmail) ?? "";
+  return Boolean(user && lastFrom.includes(user));
+}
+
+function buildWaitingOnSummaries(
+  threads: InboxThread[],
+  userEmail?: string,
+): BriefWaitingThread[] {
+  return threads
+    .filter((t) => isWaitingOnRecipientReply(t, userEmail))
+    .slice(0, 5)
+    .map((t) => ({
+      id: t.id,
+      subject: t.subject?.trim() || "No subject",
+      to: t.to?.trim() || "Unknown",
+      sentDaysAgo: daysSince(t.date) ?? 0,
+    }));
+}
+
 export async function gatherDailyBriefContext(input: {
   tenantId: string;
   userEmail?: string;
@@ -352,57 +449,27 @@ export async function gatherDailyBriefContext(input: {
     ? merged.filter((t) => !dismissedSet.has(t.id))
     : merged;
 
-  let rankedThreadIds = filteredMerged.map((t) => t.id);
-  const canRank =
-    filteredMerged.length > 1 && isOpenAiConfigured() && (gmailConnected || filteredMerged.length > 0);
-  if (canRank) {
-    try {
-      rankedThreadIds = await rankInboxThreads(
-        filteredMerged.slice(0, 20).map((t) => ({
-          id: t.id,
-          snippet: t.snippet,
-          subject: t.subject,
-          from: t.fromName ?? t.from,
-        })),
-      );
-    } catch {
-      rankedThreadIds = filteredMerged.map((t) => t.id);
-    }
-  }
-
+  const rankedThreadIds = await rankBriefThreads(filteredMerged, gmailConnected);
   const detailIds = rankedThreadIds.slice(0, DETAIL_THREAD_LIMIT);
   const cachedById = new Map(filteredMerged.map((t) => [t.id, t]));
-  const detailThreads = gmailConnected
-    ? await Promise.all(
-        detailIds.map(async (id) => {
-          try {
-            return await inbox.getThread(input.tenantId, id, { userEmail: input.userEmail });
-          } catch {
-            return null;
-          }
-        }),
-      )
-    : detailIds.map((id) => cachedById.get(id) ?? null);
+  const detailThreads = await loadDetailThreads(
+    inbox,
+    input.tenantId,
+    detailIds,
+    cachedById,
+    input.userEmail,
+    gmailConnected,
+  );
 
   // Build a set of thread IDs where user already sent a reply (from sent folder).
   // If a thread is in waitingOn, the user already replied — don't mark as awaitingReply.
   const userRepliedThreadIds = new Set(waitingOnList.threads.map((t) => t.id));
-
-  const threadSnapshots: BriefThreadSnapshot[] = [];
-  for (const thread of detailThreads) {
-    if (!thread) continue;
-    if (gmailConnected && !thread.unread) continue;
-    const reply = isAwaitingUserReply(thread, input.userEmail);
-    // If the sent-folder cross-check shows user already replied, override awaitingReply.
-    const alreadyReplied = userRepliedThreadIds.has(thread.id);
-    threadSnapshots.push(
-      threadSnapshot(thread, {
-        awaitingReply: alreadyReplied ? false : reply.awaiting,
-        daysWaiting: alreadyReplied ? null : reply.daysWaiting,
-        lastMessageFrom: reply.lastMessageFrom,
-      }),
-    );
-  }
+  const threadSnapshots = buildThreadSnapshots(
+    detailThreads,
+    userRepliedThreadIds,
+    input.userEmail,
+    gmailConnected,
+  );
 
   const todayEvents = (eventsResult.events ?? []).filter((e) => e.status !== "cancelled");
   const meetings = await buildBriefMeetings(todayEvents, input.tenantId, gmailConnected, inbox);
@@ -442,23 +509,7 @@ export async function gatherDailyBriefContext(input: {
     })),
     deadlineThreadIds: deadlineList.threads.map((t) => t.id).filter((id) => !dismissedSet.has(id)),
     invoiceThreadIds: invoiceList.threads.map((t) => t.id).filter((id) => !dismissedSet.has(id)),
-    waitingOn: waitingOnList.threads
-      .filter((t) => {
-        // Only include if the last message was from us (i.e. they haven't replied).
-        const messages = t.messages ?? [];
-        if (messages.length === 0) return daysSince(t.date) != null;
-        const last = messages[messages.length - 1]!;
-        const lastFrom = extractEmailAddress(last.from) ?? "";
-        const user = normalizeEmail(input.userEmail) ?? "";
-        return user && lastFrom.includes(user);
-      })
-      .slice(0, 5)
-      .map((t) => ({
-        id: t.id,
-        subject: t.subject?.trim() || "No subject",
-        to: t.to?.trim() || "Unknown",
-        sentDaysAgo: daysSince(t.date) ?? 0,
-      })),
+    waitingOn: buildWaitingOnSummaries(waitingOnList.threads, input.userEmail),
   };
 }
 

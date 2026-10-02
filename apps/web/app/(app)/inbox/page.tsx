@@ -2224,7 +2224,7 @@ export default function InboxPage() {
       syncLabelState(selectedId, selectedQuery.data.labelIds);
     }
     const messages = selectedQuery.data.messages ?? [];
-    const last = messages[messages.length - 1];
+    const last = messages.at(-1);
     const lastId = last?.id ?? null;
     let initialReplyTo = selectedQuery.data.suggestedReplyTo?.trim() || parseReplyTo(selectedQuery.data.from);
     if (last) {
@@ -2288,17 +2288,17 @@ export default function InboxPage() {
     if (!files) {
       return;
     }
-    const next = [...outboundAttachments];
-    for (const file of Array.from(files).slice(0, Math.max(0, 5 - next.length))) {
-      const contentBase64 = await fileToBase64(file);
-      next.push({
+    const availableSlots = Math.max(0, 5 - outboundAttachments.length);
+    const filesToProcess = Array.from(files).slice(0, availableSlots);
+    const newAttachments = await Promise.all(
+      filesToProcess.map(async (file) => ({
         id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
         filename: file.name,
         mimeType: file.type || "application/octet-stream",
-        contentBase64,
-      });
-    }
-    setOutboundAttachments(next);
+        contentBase64: await fileToBase64(file),
+      })),
+    );
+    setOutboundAttachments((current) => [...current, ...newAttachments]);
   };
 
   const removeOutboundAttachment = useCallback((id: string) => {
@@ -2976,7 +2976,7 @@ export default function InboxPage() {
     if (threadMessages.length === 0) {
       return (
         <EmailMessageBody
-          bodyHtml={data.messages?.[data.messages.length - 1]?.bodyHtml}
+          bodyHtml={data.messages?.at(-1)?.bodyHtml}
           body={data.body}
           snippet={data.snippet}
           className="thread-inbox-message-body"

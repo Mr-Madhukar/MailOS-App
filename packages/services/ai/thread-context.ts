@@ -49,8 +49,7 @@ function buildThreadContextPrompt(opts: {
   ];
 
   for (const [i, msg] of opts.messages.slice(-3).entries()) {
-    lines.push(`Message ${i + 1} (from: ${msg.from ?? "unknown"}):`);
-    lines.push(msg.body.slice(0, 600));
+    lines.push(`Message ${i + 1} (from: ${msg.from ?? "unknown"}):`, msg.body.slice(0, 600));
   }
 
   if (opts.relatedCount > 0) {
@@ -144,7 +143,7 @@ function checkFollowUpNeeded(
   threadDate?: string,
   userEmailInput?: string,
 ): boolean {
-  const lastMsg = messages[messages.length - 1];
+  const lastMsg = messages.at(-1);
   const lastMsgFrom = extractEmailAddress(lastMsg?.from) ?? "";
   const userEmail = normalizeEmail(userEmailInput) ?? "";
   const lastWasUser = userEmail && lastMsgFrom.includes(userEmail);

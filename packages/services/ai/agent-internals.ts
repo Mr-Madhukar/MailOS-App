@@ -6,6 +6,60 @@
 import type { ApprovalDefaults } from "../settings";
 import type { OpenAiToolDefinition } from "./openai-tools";
 
+const threadIdParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    threadId: { type: "string", description: "Gmail thread id" },
+  },
+  required: ["threadId"],
+};
+
+const itemIdParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    itemId: { type: "string", description: "Queue item UUID" },
+  },
+  required: ["itemId"],
+};
+
+const eventIdParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    eventId: { type: "string", description: "Google Calendar event id" },
+  },
+  required: ["eventId"],
+};
+
+const draftIdParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    draftId: { type: "string", description: "Gmail draft id" },
+  },
+  required: ["draftId"],
+};
+
+const searchDbParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    query: { type: "string" },
+    limit: { type: "number", default: 20 },
+  },
+};
+
+const emptyParam: Record<string, unknown> = {
+  type: "object",
+  properties: {},
+};
+
+const threadLabelParam: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    threadId: { type: "string" },
+    labelId: { type: "string", description: "Gmail label id" },
+  },
+  required: ["threadId", "labelId"],
+};
+
 export const AGENT_TOOLS: OpenAiToolDefinition[] = [
   {
     type: "function",
@@ -40,13 +94,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_thread",
       description: "Fetch a single email thread with messages for context before drafting a reply.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -143,13 +191,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "approve_queue_item",
       description: "Approve a pending queue item (sends email or creates calendar event).",
-      parameters: {
-        type: "object",
-        properties: {
-          itemId: { type: "string", description: "Queue item UUID" },
-        },
-        required: ["itemId"],
-      },
+      parameters: itemIdParam,
     },
   },
   {
@@ -157,13 +199,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "dismiss_queue_item",
       description: "Dismiss (reject) a pending queue item without executing it.",
-      parameters: {
-        type: "object",
-        properties: {
-          itemId: { type: "string", description: "Queue item UUID" },
-        },
-        required: ["itemId"],
-      },
+      parameters: itemIdParam,
     },
   },
   {
@@ -171,7 +207,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "list_labels",
       description: "List Gmail labels (system and user-defined). Call before apply_label to get label ids.",
-      parameters: { type: "object", properties: {} },
+      parameters: emptyParam,
     },
   },
   {
@@ -179,13 +215,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "archive_thread",
       description: "Archive a Gmail thread (remove from inbox). Requires explicit user intent.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -193,14 +223,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "apply_label",
       description: "Apply a Gmail label to a thread by label id (call list_labels first).",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string" },
-          labelId: { type: "string", description: "Gmail label id e.g. STARRED or a custom label id" },
-        },
-        required: ["threadId", "labelId"],
-      },
+      parameters: threadLabelParam,
     },
   },
   {
@@ -208,14 +231,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "remove_label",
       description: "Remove a Gmail label from a thread by label id (call list_labels first).",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string" },
-          labelId: { type: "string", description: "Gmail label id to remove" },
-        },
-        required: ["threadId", "labelId"],
-      },
+      parameters: threadLabelParam,
     },
   },
   {
@@ -223,11 +239,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "star_thread",
       description: "Star a Gmail thread via Corsair (adds STARRED label). Use when user asks to star or bookmark an email.",
-      parameters: {
-        type: "object",
-        properties: { threadId: { type: "string", description: "Gmail thread id" } },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -235,11 +247,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "trash_thread",
       description: "Move a Gmail thread to trash via Corsair. Use only when user explicitly asks to delete or trash an email.",
-      parameters: {
-        type: "object",
-        properties: { threadId: { type: "string", description: "Gmail thread id" } },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -247,11 +255,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_smart_replies",
       description: "Generate 3 AI-powered reply suggestions for a Gmail thread using full thread context from Corsair. Call before composing a reply to get options.",
-      parameters: {
-        type: "object",
-        properties: { threadId: { type: "string", description: "Gmail thread id" } },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -287,11 +291,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_thread_context",
       description: "Get smart context for an email thread: key people, action items, related emails, and sentiment analysis via Corsair + OpenAI.",
-      parameters: {
-        type: "object",
-        properties: { threadId: { type: "string", description: "Gmail thread id" } },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -361,13 +361,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
       name: "cancel_event",
       description:
         "Queue deletion/cancellation of a Google Calendar event for human approval (HITL). Use when user asks to delete, remove, or cancel a meeting — first find the event via search_events_db or list_calendar_events with query. If the meeting is only pending in Queue (not on calendar yet), use dismiss_queue_item instead.",
-      parameters: {
-        type: "object",
-        properties: {
-          eventId: { type: "string", description: "Google Calendar event id" },
-        },
-        required: ["eventId"],
-      },
+      parameters: eventIdParam,
     },
   },
   {
@@ -375,13 +369,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "unstar_thread",
       description: "Remove the star from a Gmail thread via Corsair. Use when user says 'unstar this email'.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -389,13 +377,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "mark_important",
       description: "Mark a Gmail thread as important via Corsair (adds IMPORTANT label). Use when user says 'mark as important' or 'prioritize this'.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -403,10 +385,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_gmail_connection_status",
       description: "Check whether Gmail is connected for the current user. Use when user asks about their Gmail connection or if you need to verify connectivity before acting.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
+      parameters: emptyParam,
     },
   },
   {
@@ -427,13 +406,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_draft",
       description: "Retrieve a specific Gmail draft by ID via Corsair. Use to read the full content of a draft before editing or sending.",
-      parameters: {
-        type: "object",
-        properties: {
-          draftId: { type: "string", description: "Gmail draft id" },
-        },
-        required: ["draftId"],
-      },
+      parameters: draftIdParam,
     },
   },
   {
@@ -441,13 +414,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "delete_draft",
       description: "Permanently delete a Gmail draft via Corsair. Use only when user explicitly asks to delete a draft.",
-      parameters: {
-        type: "object",
-        properties: {
-          draftId: { type: "string", description: "Gmail draft id to delete" },
-        },
-        required: ["draftId"],
-      },
+      parameters: draftIdParam,
     },
   },
   {
@@ -455,13 +422,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "mark_thread_read",
       description: "Mark a Gmail thread as read via Corsair (removes UNREAD label). Use when user says 'mark as read'.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -484,13 +445,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "summarize_thread",
       description: "Summarize an email thread: key decisions, action items, next steps, and sentiment. Use when user asks to summarize 'this email', 'this thread', or 'this one' — prefer the threadId from CURRENT USER FOCUS if set.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   // ── 5 new tools (39 total) ────────────────────────────────────────────────
@@ -499,13 +454,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "mark_not_important",
       description: "Remove the Important flag from a Gmail thread via Corsair. Use when user says 'unmark important' or 'this is not important'.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread id" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -513,13 +462,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_calendar_event",
       description: "Fetch details of a single Google Calendar event by ID via Corsair. Returns title, time, attendees, description, location. Use before rescheduling or preparing for a specific event.",
-      parameters: {
-        type: "object",
-        properties: {
-          eventId: { type: "string", description: "Google Calendar event id" },
-        },
-        required: ["eventId"],
-      },
+      parameters: eventIdParam,
     },
   },
   {
@@ -582,13 +525,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "mark_thread_unread",
       description: "Add the UNREAD label to a Gmail thread via Corsair — the reverse of mark_thread_read. Useful for flagging threads that need revisiting.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread ID." },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -611,13 +548,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "send_draft",
       description: "Send an existing Gmail draft immediately via Corsair. Use after create_draft_email when the user confirms they want to send it.",
-      parameters: {
-        type: "object",
-        properties: {
-          draftId: { type: "string", description: "Gmail draft ID to send." },
-        },
-        required: ["draftId"],
-      },
+      parameters: draftIdParam,
     },
   },
   {
@@ -625,10 +556,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "get_calendar_connection_status",
       description: "Check whether Google Calendar is connected via Corsair for the current user. Returns connection status and available scopes.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
+      parameters: emptyParam,
     },
   },
   {
@@ -636,13 +564,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "mute_thread",
       description: "Mute a Gmail thread via Corsair (adds MUTE label, removes from INBOX). Future messages in this thread skip the inbox.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread ID to mute." },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -650,13 +572,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "unmute_thread",
       description: "Unmute a Gmail thread via Corsair (removes MUTE label, restores to INBOX).",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string", description: "Gmail thread ID to unmute." },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -680,13 +596,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "search_threads_db",
       description: "Search synced Gmail threads via corsair.gmail.db.threads.search (fast local cache).",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "number", default: 20 },
-        },
-      },
+      parameters: searchDbParam,
     },
   },
   {
@@ -710,13 +620,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
       name: "search_events_db",
       description:
         "Search synced Google Calendar events by title keywords via local cache. Use with list_calendar_events (query param) when user asks to find/delete a meeting by name.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "number", default: 20 },
-        },
-      },
+      parameters: searchDbParam,
     },
   },
   {
@@ -724,13 +628,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "search_calendars_db",
       description: "Search synced Google Calendars via googlecalendar.db.calendars.search.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "number", default: 20 },
-        },
-      },
+      parameters: searchDbParam,
     },
   },
   {
@@ -796,13 +694,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "untrash_thread",
       description: "Restore a Gmail thread from trash via Corsair threads.untrash.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
   {
@@ -828,13 +720,7 @@ export const AGENT_TOOLS: OpenAiToolDefinition[] = [
     function: {
       name: "delete_thread",
       description: "Permanently delete a Gmail thread via Corsair threads.delete. Use only when user explicitly asks to delete forever.",
-      parameters: {
-        type: "object",
-        properties: {
-          threadId: { type: "string" },
-        },
-        required: ["threadId"],
-      },
+      parameters: threadIdParam,
     },
   },
 ];

@@ -77,55 +77,21 @@ const nextConfig = {
     ];
   },
   async headers() {
+    const corsairHeaders = [
+      {
+        key: "Content-Security-Policy",
+        value:
+          `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self' https://hub.corsair.dev; base-uri 'self'; form-action 'self'`,
+      },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    ];
+
     return [
-      {
-        source: "/api/corsair/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self' https://hub.corsair.dev; base-uri 'self'; form-action 'self'`,
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
-      {
-        source: "/api/corsair",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self' https://hub.corsair.dev; base-uri 'self'; form-action 'self'`,
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
-      {
-        source: "/api-connect/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self' https://hub.corsair.dev; base-uri 'self'; form-action 'self'`,
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
-      {
-        source: "/api-connect",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self' https://hub.corsair.dev; base-uri 'self'; form-action 'self'`,
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
+      { source: "/api/corsair/:path*", headers: corsairHeaders },
+      { source: "/api/corsair", headers: corsairHeaders },
+      { source: "/api-connect/:path*", headers: corsairHeaders },
+      { source: "/api-connect", headers: corsairHeaders },
       {
         source: "/:path((?!api/corsair|api-connect).*)",
         headers: [

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { getCalendarService } from "@repo/services/calendar";
 import { getQueueService } from "@repo/services/queue";
-import { calendarUpdatePayloadSchema } from "@repo/services/queue/schemas";
+import { calendarUpdatePayloadSchema, queueItemSchema } from "@repo/services/queue/schemas";
 
 import { mapServiceError, protectedProcedure, router } from "../../trpc";
 import { generatePath } from "../../utils/path-generator";
@@ -42,19 +42,6 @@ const calendarEventSchema = z.object({
 });
 
 const isoDateTimeSchema = z.string().min(1);
-
-const queueItemSchema = z.object({
-  id: z.string().uuid(),
-  kind: z.enum(["email_send", "email_draft", "draft_send", "calendar_invite", "meeting_bundle", "calendar_archive", "calendar_delete", "calendar_update"]),
-  title: z.string(),
-  preview: z.string().optional(),
-  payload: z.record(z.string(), z.unknown()),
-  sourceThreadId: z.string().optional(),
-  status: z.enum(["pending", "processing", "approved", "dismissed", "failed"]),
-  errorMessage: z.string().optional(),
-  createdAt: z.string(),
-  resolvedAt: z.string().optional(),
-});
 
 export const calendarRouter = router({
   connectionStatus: protectedProcedure

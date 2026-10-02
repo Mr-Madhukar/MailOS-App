@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { executePermission } from "corsair";
 import { logger } from "@repo/logger";
 
@@ -56,24 +56,44 @@ async function setPermissionStatus(token: string, status: "approved" | "denied")
   );
 }
 
-corsairPermissionsRouter.post("/:token/approve", async (req, res) => {
+async function resolveAuthorizedPermission(req: Request, res: Response) {
   if (!isCorsairConfigured()) {
-    return res.status(503).json({ error: "Corsair is not configured" });
+    res.status(503).json({ error: "Corsair is not configured" });
+    return null;
   }
 
   const token = req.params.token?.trim();
-  if (!token) return res.status(400).json({ error: "token is required" });
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return null;
+  }
 
   const userId = await resolveMcpUserId(req);
-  if (!userId) return res.status(401).json({ error: "Authentication required" });
+  if (!userId) {
+    res.status(401).json({ error: "Authentication required" });
+    return null;
+  }
 
+  const corsair = getCorsair();
+  const record = await corsair.permissions.find_by_token(token);
+  if (!record) {
+    res.status(404).json({ error: "Permission request not found" });
+    return null;
+  }
+  if (record.tenant_id && record.tenant_id !== userId && record.tenant_id !== "default") {
+    res.status(403).json({ error: "Not authorized for this permission request" });
+    return null;
+  }
+
+  return { token, corsair, record };
+}
+
+corsairPermissionsRouter.post("/:token/approve", async (req, res) => {
   try {
-    const corsair = getCorsair();
-    const record = await corsair.permissions.find_by_token(token);
-    if (!record) return res.status(404).json({ error: "Permission request not found" });
-    if (record.tenant_id && record.tenant_id !== userId && record.tenant_id !== "default") {
-      return res.status(403).json({ error: "Not authorized for this permission request" });
-    }
+    const auth = await resolveAuthorizedPermission(req, res);
+    if (!auth) return;
+
+    const { token, corsair, record } = auth;
     if (record.status !== "pending") {
       return res.status(409).json({ error: `Request already ${record.status}` });
     }
@@ -83,7 +103,7 @@ corsairPermissionsRouter.post("/:token/approve", async (req, res) => {
     return res.json({ ok: true, token, result });
   } catch (error) {
     logger.warn("corsair.permissions.approve failed", {
-      token,
+      token: req.params.token,
       message: error instanceof Error ? error.message : String(error),
     });
     return res.status(500).json({
@@ -93,29 +113,16 @@ corsairPermissionsRouter.post("/:token/approve", async (req, res) => {
 });
 
 corsairPermissionsRouter.post("/:token/deny", async (req, res) => {
-  if (!isCorsairConfigured()) {
-    return res.status(503).json({ error: "Corsair is not configured" });
-  }
-
-  const token = req.params.token?.trim();
-  if (!token) return res.status(400).json({ error: "token is required" });
-
-  const userId = await resolveMcpUserId(req);
-  if (!userId) return res.status(401).json({ error: "Authentication required" });
-
   try {
-    const corsair = getCorsair();
-    const record = await corsair.permissions.find_by_token(token);
-    if (!record) return res.status(404).json({ error: "Permission request not found" });
-    if (record.tenant_id && record.tenant_id !== userId && record.tenant_id !== "default") {
-      return res.status(403).json({ error: "Not authorized for this permission request" });
-    }
+    const auth = await resolveAuthorizedPermission(req, res);
+    if (!auth) return;
 
+    const { token } = auth;
     await setPermissionStatus(token, "denied");
     return res.json({ ok: true, token, status: "denied" });
   } catch (error) {
     logger.warn("corsair.permissions.deny failed", {
-      token,
+      token: req.params.token,
       message: error instanceof Error ? error.message : String(error),
     });
     return res.status(500).json({ error: "Failed to deny permission request" });
