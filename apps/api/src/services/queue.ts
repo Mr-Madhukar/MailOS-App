@@ -319,34 +319,25 @@ export class ThreadQueueService implements QueueService {
     await this.recoverStaleProcessing(userId);
     const status = opts?.status ?? "pending";
     const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
-    const rows =
-      status === "all"
-        ? await db
-            .select()
-            .from(threadQueueItemsTable)
-            .where(eq(threadQueueItemsTable.userId, userId))
-            .orderBy(desc(threadQueueItemsTable.createdAt))
-            .limit(limit)
-        : status === "pending"
-          ? await db
-              .select()
-              .from(threadQueueItemsTable)
-              .where(
-                and(
-                  eq(threadQueueItemsTable.userId, userId),
-                  inArray(threadQueueItemsTable.status, ["pending", "processing"]),
-                ),
-              )
-              .orderBy(desc(threadQueueItemsTable.createdAt))
-              .limit(limit)
-          : await db
-              .select()
-              .from(threadQueueItemsTable)
-              .where(
-                and(eq(threadQueueItemsTable.userId, userId), eq(threadQueueItemsTable.status, status)),
-              )
-              .orderBy(desc(threadQueueItemsTable.createdAt))
-              .limit(limit);
+    let whereCondition = eq(threadQueueItemsTable.userId, userId);
+    if (status === "pending") {
+      whereCondition = and(
+        eq(threadQueueItemsTable.userId, userId),
+        inArray(threadQueueItemsTable.status, ["pending", "processing"]),
+      )!;
+    } else if (status !== "all") {
+      whereCondition = and(
+        eq(threadQueueItemsTable.userId, userId),
+        eq(threadQueueItemsTable.status, status),
+      )!;
+    }
+
+    const rows = await db
+      .select()
+      .from(threadQueueItemsTable)
+      .where(whereCondition)
+      .orderBy(desc(threadQueueItemsTable.createdAt))
+      .limit(limit);
 
     return rows.map(mapRow);
   }
@@ -865,6 +856,161 @@ export class ThreadQueueService implements QueueService {
     return mapRow(updated);
   }
 
+  private async executeEmailSend(userId: string, payload: Record<string, unknown>, demoUser: boolean) {
+    const inbox = getInboxService();
+    const email = parseEmailQueuePayload(payload);
+    const status = await inbox.getConnectionStatus(userId);
+    if (status.gmail !== "connected") {
+      if (demoUser) {
+        logger.info("Demo queue approve: simulated email send (Gmail not connected)", {
+          userId,
+          to: email.to,
+          subject: email.subject,
+        });
+        return;
+      }
+      throw serviceError("PRECONDITION_FAILED", "Connect Gmail in Settings to send this email.");
+    }
+    await inbox.sendMessage(userId, email);
+  }
+
+  private async executeEmailDraft(userId: string, payload: Record<string, unknown>, demoUser: boolean) {
+    const inbox = getInboxService();
+    const email = parseEmailQueuePayload(payload);
+    const status = await inbox.getConnectionStatus(userId);
+    if (status.gmail !== "connected") {
+      if (demoUser) {
+        logger.info("Demo queue approve: simulated draft save (Gmail not connected)", {
+          userId,
+          to: email.to,
+          subject: email.subject,
+        });
+        return;
+      }
+      throw serviceError("PRECONDITION_FAILED", "Connect Gmail in Settings to save this draft.");
+    }
+    await inbox.createDraft(userId, email);
+  }
+
+  private async executeDraftSend(userId: string, payload: Record<string, unknown>) {
+    const inbox = getInboxService();
+    const draft = parseDraftSendPayload(payload);
+    const status = await inbox.getConnectionStatus(userId);
+    if (status.gmail !== "connected") {
+      throw serviceError("PRECONDITION_FAILED", "Connect Gmail in Settings to send this draft.");
+    }
+    await inbox.sendDraft(userId, draft.draftId);
+  }
+
+  private async executeCalendarInvite(
+    userId: string,
+    payload: Record<string, unknown>,
+    demoUser: boolean,
+    previewText?: string | null,
+  ) {
+    const calendar = getCalendarService();
+    let event = parseCalendarQueuePayload(payload);
+    const trimmedPreview = previewText?.trim();
+    if (trimmedPreview && /\b(?:from|at)\s+\d|\d{1,2}\s*(?:am|pm)/i.test(trimmedPreview)) {
+      const reparsed = parseQuickAddText(trimmedPreview);
+      event = parseCalendarQueuePayload({
+        ...event,
+        summary: reparsed.summary || event.summary,
+        startDateTime: reparsed.startDateTime,
+        endDateTime: reparsed.endDateTime,
+        timeZone: reparsed.timeZone,
+        allDay: reparsed.allDay,
+      });
+    }
+    const calStatus = await calendar.getConnectionStatus(userId);
+    if (calStatus.googlecalendar !== "connected") {
+      if (demoUser) {
+        logger.info("Demo queue approve: simulated calendar create (Calendar not connected)", {
+          userId,
+          summary: event.summary,
+        });
+        return;
+      }
+      throw serviceError(
+        "PRECONDITION_FAILED",
+        "Connect Google Calendar in Settings to create this event.",
+      );
+    }
+    await calendar.createEvent(userId, event);
+  }
+
+  private async executeMeetingBundle(userId: string, payload: Record<string, unknown>) {
+    const inbox = getInboxService();
+    const calendar = getCalendarService();
+    const bundle = parseMeetingBundlePayload(payload);
+    let createdEventId: string | undefined;
+
+    try {
+      const created = await calendar.createEvent(userId, bundle.calendar);
+      createdEventId = created.id;
+      await inbox.sendMessage(userId, bundle.email);
+    } catch (error) {
+      if (createdEventId) {
+        throw serviceError(
+          "PRECONDITION_FAILED",
+          `Calendar event was created but the email could not be sent. Check Google Calendar (event ${createdEventId}) and retry if needed.`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async executeCalendarArchive(
+    userId: string,
+    payload: Record<string, unknown>,
+    archiveOpt?: { startDateTime: string; endDateTime: string; timeZone?: string },
+  ) {
+    const calendar = getCalendarService();
+    const archive = parseCalendarArchivePayload(payload);
+    const target = archiveOpt ?? {
+      startDateTime: archive.startDateTime,
+      endDateTime: archive.endDateTime,
+      timeZone: archive.timeZone,
+    };
+    await calendar.updateEventTimes(
+      userId,
+      archive.eventId,
+      {
+        startDateTime: target.startDateTime,
+        endDateTime: target.endDateTime,
+        timeZone: target.timeZone ?? archive.timeZone,
+        allDay: archive.allDay,
+      },
+      {
+        editScope: archive.editScope,
+        recurringEventId: archive.recurringEventId,
+      },
+    );
+  }
+
+  private async executeCalendarDelete(userId: string, payload: Record<string, unknown>) {
+    const calendar = getCalendarService();
+    const deletePayload = parseCalendarDeletePayload(payload);
+    if (deletePayload.cancelWithNotify) {
+      await calendar.cancelEvent(userId, deletePayload.eventId);
+    } else {
+      await calendar.deleteEvent(userId, deletePayload.eventId, {
+        editScope: deletePayload.editScope,
+        recurringEventId: deletePayload.recurringEventId,
+      });
+    }
+  }
+
+  private async executeCalendarUpdate(userId: string, payload: Record<string, unknown>) {
+    const calendar = getCalendarService();
+    const updatePayload = parseCalendarUpdatePayload(payload);
+    await calendar.patchEventDetails(userId, updatePayload.eventId, {
+      summary: updatePayload.newSummary,
+      description: updatePayload.description,
+      location: updatePayload.location,
+    });
+  }
+
   private async executeItem(
     userId: string,
     kind: QueueItemKind,
@@ -874,152 +1020,25 @@ export class ThreadQueueService implements QueueService {
       preview?: string | null;
     },
   ) {
-    const inbox = getInboxService();
-    const calendar = getCalendarService();
     const demoUser = await isDemoUserId(userId);
 
     switch (kind) {
-      case "email_send": {
-        const email = parseEmailQueuePayload(payload);
-        const status = await inbox.getConnectionStatus(userId);
-        if (status.gmail !== "connected") {
-          if (demoUser) {
-            logger.info("Demo queue approve: simulated email send (Gmail not connected)", {
-              userId,
-              to: email.to,
-              subject: email.subject,
-            });
-            return;
-          }
-          throw serviceError(
-            "PRECONDITION_FAILED",
-            "Connect Gmail in Settings to send this email.",
-          );
-        }
-        await inbox.sendMessage(userId, email);
-        return;
-      }
-      case "email_draft": {
-        const email = parseEmailQueuePayload(payload);
-        const status = await inbox.getConnectionStatus(userId);
-        if (status.gmail !== "connected") {
-          if (demoUser) {
-            logger.info("Demo queue approve: simulated draft save (Gmail not connected)", {
-              userId,
-              to: email.to,
-              subject: email.subject,
-            });
-            return;
-          }
-          throw serviceError(
-            "PRECONDITION_FAILED",
-            "Connect Gmail in Settings to save this draft.",
-          );
-        }
-        await inbox.createDraft(userId, email);
-        return;
-      }
-      case "draft_send": {
-        const draft = parseDraftSendPayload(payload);
-        const status = await inbox.getConnectionStatus(userId);
-        if (status.gmail !== "connected") {
-          throw serviceError(
-            "PRECONDITION_FAILED",
-            "Connect Gmail in Settings to send this draft.",
-          );
-        }
-        await inbox.sendDraft(userId, draft.draftId);
-        return;
-      }
-      case "calendar_invite": {
-        let event = parseCalendarQueuePayload(payload);
-        const previewText = opts?.preview?.trim();
-        if (previewText && /\b(?:from|at)\s+\d|\d{1,2}\s*(?:am|pm)/i.test(previewText)) {
-          const reparsed = parseQuickAddText(previewText);
-          event = parseCalendarQueuePayload({
-            ...event,
-            summary: reparsed.summary || event.summary,
-            startDateTime: reparsed.startDateTime,
-            endDateTime: reparsed.endDateTime,
-            timeZone: reparsed.timeZone,
-            allDay: reparsed.allDay,
-          });
-        }
-        const calStatus = await calendar.getConnectionStatus(userId);
-        if (calStatus.googlecalendar !== "connected") {
-          if (demoUser) {
-            logger.info("Demo queue approve: simulated calendar create (Calendar not connected)", {
-              userId,
-              summary: event.summary,
-            });
-            return;
-          }
-          throw serviceError(
-            "PRECONDITION_FAILED",
-            "Connect Google Calendar in Settings to create this event.",
-          );
-        }
-        await calendar.createEvent(userId, event);
-        return;
-      }
-      case "meeting_bundle": {
-        const bundle = parseMeetingBundlePayload(payload);
-        let createdEventId: string | undefined;
-
-        try {
-          const created = await calendar.createEvent(userId, bundle.calendar);
-          createdEventId = created.id;
-          await inbox.sendMessage(userId, bundle.email);
-        } catch (error) {
-          if (createdEventId) {
-            throw serviceError(
-              "PRECONDITION_FAILED",
-              `Calendar event was created but the email could not be sent. Check Google Calendar (event ${createdEventId}) and retry if needed.`,
-            );
-          }
-          throw error;
-        }
-        return;
-      }
-      case "calendar_archive": {
-        const archive = parseCalendarArchivePayload(payload);
-        const target = opts?.archive ?? {
-          startDateTime: archive.startDateTime,
-          endDateTime: archive.endDateTime,
-          timeZone: archive.timeZone,
-        };
-        await calendar.updateEventTimes(userId, archive.eventId, {
-          startDateTime: target.startDateTime,
-          endDateTime: target.endDateTime,
-          timeZone: target.timeZone ?? archive.timeZone,
-          allDay: archive.allDay,
-        }, {
-          editScope: archive.editScope,
-          recurringEventId: archive.recurringEventId,
-        });
-        return;
-      }
-      case "calendar_delete": {
-        const deletePayload = parseCalendarDeletePayload(payload);
-        if (deletePayload.cancelWithNotify) {
-          await calendar.cancelEvent(userId, deletePayload.eventId);
-        } else {
-          await calendar.deleteEvent(userId, deletePayload.eventId, {
-            editScope: deletePayload.editScope,
-            recurringEventId: deletePayload.recurringEventId,
-          });
-        }
-        return;
-      }
-      case "calendar_update": {
-        const updatePayload = parseCalendarUpdatePayload(payload);
-        await calendar.patchEventDetails(userId, updatePayload.eventId, {
-          summary: updatePayload.newSummary,
-          description: updatePayload.description,
-          location: updatePayload.location,
-        });
-        return;
-      }
+      case "email_send":
+        return await this.executeEmailSend(userId, payload, demoUser);
+      case "email_draft":
+        return await this.executeEmailDraft(userId, payload, demoUser);
+      case "draft_send":
+        return await this.executeDraftSend(userId, payload);
+      case "calendar_invite":
+        return await this.executeCalendarInvite(userId, payload, demoUser, opts?.preview);
+      case "meeting_bundle":
+        return await this.executeMeetingBundle(userId, payload);
+      case "calendar_archive":
+        return await this.executeCalendarArchive(userId, payload, opts?.archive);
+      case "calendar_delete":
+        return await this.executeCalendarDelete(userId, payload);
+      case "calendar_update":
+        return await this.executeCalendarUpdate(userId, payload);
       default:
         throw serviceError("INTERNAL", `Unsupported queue item kind: ${String(kind)}`);
     }

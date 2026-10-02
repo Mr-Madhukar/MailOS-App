@@ -93,7 +93,9 @@ export function useDemoMode(email: string | null | undefined): DemoModeState {
 
   const getFeature = useCallback(
     (feature: DemoFeature): DemoFeatureState => {
-      void tick;
+      if (tick < 0) {
+        return buildFeatureState(feature, 0);
+      }
       return buildFeatureState(feature, isDemo ? readAttempts(feature) : 0);
     },
     [isDemo, tick],

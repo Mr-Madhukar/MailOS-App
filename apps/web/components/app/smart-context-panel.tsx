@@ -15,8 +15,153 @@ import {
 import { trpc } from "~/trpc/client";
 
 interface Props {
-  threadId: string;
-  onOpenThread?: (id: string) => void;
+  readonly threadId: string;
+  readonly onOpenThread?: (id: string) => void;
+}
+
+type RelatedThread = {
+  id: string;
+  subject: string;
+  from: string;
+};
+
+type RelatedEvent = {
+  id: string;
+  summary: string;
+  start?: string;
+};
+
+function RelatedEmailsBlock({
+  threads,
+  onOpenThread,
+}: {
+  readonly threads: readonly RelatedThread[];
+  readonly onOpenThread?: (id: string) => void;
+}) {
+  if (threads.length === 0) return null;
+  return (
+    <div className="scp-block">
+      <p className="scp-label">
+        <Mail size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+        Related emails
+      </p>
+      <ul className="scp-list">
+        {threads.map((t) => (
+          <li key={t.id}>
+            <button
+              type="button"
+              className="scp-list-item"
+              onClick={() => onOpenThread?.(t.id)}
+              title={`Open: ${t.subject}`}
+            >
+              <span className="scp-list-subject">{t.subject}</span>
+              <span className="scp-list-meta">{t.from}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RelatedMeetingsBlock({
+  events,
+  onOpenEvent,
+}: {
+  readonly events: readonly RelatedEvent[];
+  readonly onOpenEvent: (id: string) => void;
+}) {
+  if (events.length === 0) return null;
+  return (
+    <div className="scp-block">
+      <p className="scp-label">
+        <Calendar size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+        Related meetings
+      </p>
+      <ul className="scp-list">
+        {events.map((e) => (
+          <li key={e.id}>
+            <button
+              type="button"
+              className="scp-list-item"
+              onClick={() => onOpenEvent(e.id)}
+              title={`View: ${e.summary}`}
+            >
+              <span className="scp-list-subject">{e.summary}</span>
+              {e.start && (
+                <span className="scp-list-meta">
+                  <Clock size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
+                  {new Date(e.start).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function responseRateLabel(rate: number): string {
+  if (rate >= 0.7) return "Responsive contact";
+  if (rate >= 0.4) return "Mixed response pattern";
+  return "Often one-sided";
+}
+
+function RelationshipIntelBlock({
+  intel,
+}: {
+  readonly intel?: {
+    readonly relationshipSummary?: string;
+    readonly totalInteractions: number;
+    readonly responseRate?: number | null;
+    readonly lastInteractionDaysAgo?: number | null;
+    readonly recentTopics: readonly string[];
+    readonly recommendedAction?: string;
+  };
+}) {
+  if (!intel || (intel.totalInteractions <= 0 && !intel.relationshipSummary)) {
+    return null;
+  }
+  return (
+    <div className="scp-block">
+      <p className="scp-label">
+        <TrendingUp size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+        Relationship Intel
+      </p>
+      <p className="scp-text">{intel.relationshipSummary}</p>
+      <div className="scp-relationship-meta">
+        {intel.totalInteractions > 0 && (
+          <span className="scp-meta-chip">{intel.totalInteractions} emails</span>
+        )}
+        {intel.responseRate != null && (
+          <span className="scp-meta-chip" title="Share of your emails this contact replied to">
+            {responseRateLabel(intel.responseRate)}
+          </span>
+        )}
+        {intel.lastInteractionDaysAgo != null && (
+          <span className="scp-meta-chip">Last active {intel.lastInteractionDaysAgo}d ago</span>
+        )}
+      </div>
+      {intel.recentTopics.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+          {intel.recentTopics.map((topic) => (
+            <span key={topic} className="thread-topic-chip">
+              {topic}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="scp-text" style={{ marginTop: 4, fontStyle: "italic", opacity: 0.8 }}>
+        {intel.recommendedAction}
+      </p>
+    </div>
+  );
 }
 
 export function SmartContextPanel({ threadId, onOpenThread }: Props) {
@@ -108,65 +253,12 @@ export function SmartContextPanel({ threadId, onOpenThread }: Props) {
         </div>
       ) : null}
 
-      {/* Related emails */}
-      {d.relatedThreads.length > 0 ? (
-        <div className="scp-block">
-          <p className="scp-label">
-            <Mail size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-            Related emails
-          </p>
-          <ul className="scp-list">
-            {d.relatedThreads.map((t) => (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  className="scp-list-item"
-                  onClick={() => onOpenThread?.(t.id)}
-                  title={`Open: ${t.subject}`}
-                >
-                  <span className="scp-list-subject">{t.subject}</span>
-                  <span className="scp-list-meta">{t.from}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <RelatedEmailsBlock threads={d.relatedThreads} onOpenThread={onOpenThread} />
 
-      {/* Related calendar events */}
-      {d.relatedEvents.length > 0 ? (
-        <div className="scp-block">
-          <p className="scp-label">
-            <Calendar size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-            Related meetings
-          </p>
-          <ul className="scp-list">
-            {d.relatedEvents.map((e) => (
-              <li key={e.id}>
-                <button
-                  type="button"
-                  className="scp-list-item"
-                  onClick={() => router.push(`/calendar?event=${e.id}`)}
-                  title={`View: ${e.summary}`}
-                >
-                  <span className="scp-list-subject">{e.summary}</span>
-                  {e.start ? (
-                    <span className="scp-list-meta">
-                      <Clock size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                      {new Date(e.start).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <RelatedMeetingsBlock
+        events={d.relatedEvents}
+        onOpenEvent={(id) => router.push(`/calendar?event=${id}`)}
+      />
 
       {/* Sender info */}
       {d.senderInfo ? (
@@ -184,45 +276,7 @@ export function SmartContextPanel({ threadId, onOpenThread }: Props) {
         </div>
       ) : null}
 
-      {/* Relationship Intelligence (Contact Intel) */}
-      {contactQuery.data && (contactQuery.data.totalInteractions > 0 || contactQuery.data.relationshipSummary) ? (
-        <div className="scp-block">
-          <p className="scp-label">
-            <TrendingUp size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-            Relationship Intel
-          </p>
-          <p className="scp-text">{contactQuery.data.relationshipSummary}</p>
-          <div className="scp-relationship-meta">
-            {contactQuery.data.totalInteractions > 0 && (
-              <span className="scp-meta-chip">{contactQuery.data.totalInteractions} emails</span>
-            )}
-            {contactQuery.data.responseRate != null && (
-              <span className="scp-meta-chip" title="Share of your emails this contact replied to">
-                {contactQuery.data.responseRate >= 0.7
-                  ? "Responsive contact"
-                  : contactQuery.data.responseRate >= 0.4
-                    ? "Mixed response pattern"
-                    : "Often one-sided"}
-              </span>
-            )}
-            {contactQuery.data.lastInteractionDaysAgo != null && (
-              <span className="scp-meta-chip">Last active {contactQuery.data.lastInteractionDaysAgo}d ago</span>
-            )}
-          </div>
-          {contactQuery.data.recentTopics.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-              {contactQuery.data.recentTopics.map((topic) => (
-                <span key={topic} className="thread-topic-chip">
-                  {topic}
-                </span>
-              ))}
-            </div>
-          )}
-          <p className="scp-text" style={{ marginTop: 4, fontStyle: "italic", opacity: 0.8 }}>
-            {contactQuery.data.recommendedAction}
-          </p>
-        </div>
-      ) : null}
+      <RelationshipIntelBlock intel={contactQuery.data} />
     </div>
   );
 }

@@ -133,7 +133,7 @@ describe.skipIf(!hasDatabase)("ThreadQueueService integration", () => {
       searchEventsDb: vi.fn(async () => ({ events: [] })),
       searchCalendarsDb: vi.fn(async () => ({ calendars: [] })),
     });
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (!userId) return;

@@ -236,6 +236,47 @@ export class CorsairInboxService implements InboxService {
     });
   }
 
+  private async queryGmailCacheDb(
+    tenantId: string,
+    query: string | undefined,
+    limit: number,
+  ): Promise<InboxThread[] | null> {
+    if (query) {
+      const msgRows = await searchGmailMessagesDb(
+        tenantId,
+        { subject: { contains: query } },
+        { limit },
+      );
+      const threadIds = [...new Set(msgRows.map((m) => m.threadId).filter(Boolean))] as string[];
+      if (threadIds.length > 0) {
+        return threadIds.slice(0, limit).map((id) => {
+          const msg = msgRows.find((m) => m.threadId === id);
+          return {
+            id,
+            snippet: msg?.snippet ?? "",
+            subject: msg?.subject,
+            from: msg?.from,
+          };
+        });
+      }
+      const threadRows = await searchGmailThreadsDb(
+        tenantId,
+        { snippet: { contains: query } },
+        { limit },
+      );
+      if (threadRows.length > 0) {
+        return threadRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" }));
+      }
+      return null;
+    }
+
+    const threadRows = await searchGmailThreadsDb(tenantId, {}, { limit });
+    if (threadRows.length > 0) {
+      return threadRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" }));
+    }
+    return null;
+  }
+
   async listCachedThreads(
     tenantId: string,
     opts?: { limit?: number; query?: string },
@@ -247,54 +288,9 @@ export class CorsairInboxService implements InboxService {
       try {
         const status = await this.getConnectionStatus(tenantId);
         if (status.gmail === "connected") {
-          if (query) {
-            const msgRows = await searchGmailMessagesDb(
-              tenantId,
-              {
-                subject: { contains: query },
-              },
-              { limit },
-            );
-            const threadIds = [...new Set(msgRows.map((m) => m.threadId).filter(Boolean))] as string[];
-            if (threadIds.length > 0) {
-              return {
-                threads: await this.filterDemoCacheThreads(
-                  tenantId,
-                  threadIds.slice(0, limit).map((id) => {
-                    const msg = msgRows.find((m) => m.threadId === id);
-                    return {
-                      id,
-                      snippet: msg?.snippet ?? "",
-                      subject: msg?.subject,
-                      from: msg?.from,
-                    };
-                  }),
-                ),
-              };
-            }
-            const threadRows = await searchGmailThreadsDb(
-              tenantId,
-              { snippet: { contains: query } },
-              { limit },
-            );
-            if (threadRows.length > 0) {
-              return {
-                threads: await this.filterDemoCacheThreads(
-                  tenantId,
-                  threadRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" })),
-                ),
-              };
-            }
-          } else {
-            const threadRows = await searchGmailThreadsDb(tenantId, {}, { limit });
-            if (threadRows.length > 0) {
-              return {
-                threads: await this.filterDemoCacheThreads(
-                  tenantId,
-                  threadRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" })),
-                ),
-              };
-            }
+          const cached = await this.queryGmailCacheDb(tenantId, query, limit);
+          if (cached) {
+            return { threads: await this.filterDemoCacheThreads(tenantId, cached) };
           }
         }
       } catch {
@@ -308,98 +304,44 @@ export class CorsairInboxService implements InboxService {
     return { threads: await this.filterDemoCacheThreads(tenantId, threads) };
   }
 
-  async listThreads(tenantId: string, opts?: ListThreadsOptions): Promise<ListThreadsResult> {
-    const maxResults = Math.min(Math.max(opts?.maxResults ?? INBOX_PAGE_SIZE, 1), 100);
-    const query = opts?.query?.trim();
+  private async getLocalCacheFallback(
+    tenantId: string,
+    query: string | undefined,
+    maxResults: number,
+  ): Promise<ListThreadsResult> {
+    const threads = query
+      ? await mailCache.search(tenantId, query, maxResults)
+      : await mailCache.recent(tenantId, maxResults);
+    return { threads: await this.filterDemoCacheThreads(tenantId, threads), stale: true };
+  }
 
-    if (!this.isConfigured()) {
-      const threads = query
-        ? await mailCache.search(tenantId, query, maxResults)
-        : await mailCache.recent(tenantId, maxResults);
-      return { threads: await this.filterDemoCacheThreads(tenantId, threads), stale: true };
+  private async fallbackListThreads(
+    tenantId: string,
+    query: string | undefined,
+    maxResults: number,
+  ): Promise<ListThreadsResult> {
+    const dbRows = query
+      ? await searchGmailThreadsDb(tenantId, { snippet: { contains: query } }, { limit: maxResults })
+      : await searchGmailThreadsDb(tenantId, {}, { limit: maxResults });
+    if (dbRows.length > 0) {
+      return {
+        threads: dbRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" })),
+        stale: true,
+      };
     }
+    const threads = query
+      ? await mailCache.search(tenantId, query, maxResults)
+      : await mailCache.recent(tenantId, maxResults);
+    return { threads, stale: true };
+  }
 
-    const status = await this.getConnectionStatus(tenantId);
-    if (status.gmail !== "connected") {
-      const threads = query
-        ? await mailCache.search(tenantId, query, maxResults)
-        : await mailCache.recent(tenantId, maxResults);
-      return { threads: await this.filterDemoCacheThreads(tenantId, threads), stale: true };
-    }
-
-    const forceRefresh = opts?.refresh === true;
-
-    const corsair = getCorsair().withTenant(tenantId);
-
-    let listResult: { threads?: Array<{ id?: string }>; nextPageToken?: string };
-    try {
-      listResult = await withTimeout(
-        corsair.gmail.api.threads.list({
-          maxResults,
-          pageToken: opts?.pageToken,
-          labelIds: query ? undefined : ["INBOX"],
-          q: query || undefined,
-        }),
-        GMAIL_LIST_TIMEOUT_MS,
-        "Gmail thread list timed out",
-      );
-    } catch (error) {
-      logger.warn("Gmail thread list failed, serving Corsair DB / local cache", {
-        tenantId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      incrementCounter("inbox.gmail_list_error");
-      const dbRows = query
-        ? await searchGmailThreadsDb(tenantId, { snippet: { contains: query } }, { limit: maxResults })
-        : await searchGmailThreadsDb(tenantId, {}, { limit: maxResults });
-      if (dbRows.length > 0) {
-        return {
-          threads: dbRows.map((r) => ({ id: r.id, snippet: r.snippet ?? "" })),
-          stale: true,
-        };
-      }
-      const threads = query
-        ? await mailCache.search(tenantId, query, maxResults)
-        : await mailCache.recent(tenantId, maxResults);
-      return { threads, stale: true };
-    }
-
-    const ids = (listResult.threads ?? [])
-      .map((thread) => thread.id)
-      .filter((id): id is string => Boolean(id));
-
-    const cache = await mailCache.getHistoryMap(tenantId, ids);
-
-    if (!forceRefresh) {
-      const allCached = ids.every((id) => isUsableCacheRow(cache.get(id)));
-      if (allCached) {
-        incrementCounter("inbox.cache_hit");
-        void this.enrichThreads(tenantId, corsair, ids).catch((error) => {
-          logger.warn("Background inbox refresh failed", {
-            tenantId,
-            message: error instanceof Error ? error.message : String(error),
-          });
-        });
-        return {
-          threads: ids.map((id) => threadFromCacheOnly(id, cache.get(id)!)),
-          nextPageToken: listResult.nextPageToken,
-          stale: true,
-        };
-      }
-    }
-
-    const idsNeedingLive = forceRefresh
-      ? ids
-      : ids.filter((id) => !isUsableCacheRow(cache.get(id)));
-
-    const resolved = new Map<string, InboxThread>();
-    for (const id of ids) {
-      const row = cache.get(id);
-      if (!forceRefresh && row && isUsableCacheRow(row) && !idsNeedingLive.includes(id)) {
-        resolved.set(id, threadFromCacheOnly(id, row));
-      }
-    }
-
+  private async resolveLiveEnrichedThreads(opts: {
+    tenantId: string;
+    corsair: ReturnType<ReturnType<typeof getCorsair>["withTenant"]>;
+    idsNeedingLive: string[];
+    cache: Awaited<ReturnType<typeof mailCache.getHistoryMap>>;
+  }): Promise<Map<string, InboxThread>> {
+    const { tenantId, corsair, idsNeedingLive, cache } = opts;
     let enrichmentTimer: ReturnType<typeof setTimeout> | undefined;
     const partialEnriched = new Map<string, InboxThread>();
     let enrichmentFinished = false;
@@ -412,10 +354,7 @@ export class CorsairInboxService implements InboxService {
       },
     );
 
-    const enrichTimeoutMs = Math.max(
-      ENRICH_TIMEOUT_MS,
-      idsNeedingLive.length * 3_500,
-    );
+    const enrichTimeoutMs = Math.max(ENRICH_TIMEOUT_MS, idsNeedingLive.length * 3_500);
 
     const cachedFallback = new Promise<Map<string, InboxThread>>((resolve) => {
       enrichmentTimer = setTimeout(() => {
@@ -447,8 +386,90 @@ export class CorsairInboxService implements InboxService {
       }, enrichTimeoutMs);
     });
 
-    const enrichedMap = await Promise.race([enrichPromise, cachedFallback]).finally(() => {
+    return await Promise.race([enrichPromise, cachedFallback]).finally(() => {
       if (enrichmentTimer) clearTimeout(enrichmentTimer);
+    });
+  }
+
+  async listThreads(tenantId: string, opts?: ListThreadsOptions): Promise<ListThreadsResult> {
+    const maxResults = Math.min(Math.max(opts?.maxResults ?? INBOX_PAGE_SIZE, 1), 100);
+    const query = opts?.query?.trim();
+
+    if (!this.isConfigured()) {
+      return await this.getLocalCacheFallback(tenantId, query, maxResults);
+    }
+
+    const status = await this.getConnectionStatus(tenantId);
+    if (status.gmail !== "connected") {
+      return await this.getLocalCacheFallback(tenantId, query, maxResults);
+    }
+
+    const forceRefresh = opts?.refresh === true;
+
+    const corsair = getCorsair().withTenant(tenantId);
+
+    let listResult: { threads?: Array<{ id?: string }>; nextPageToken?: string };
+    try {
+      listResult = await withTimeout(
+        corsair.gmail.api.threads.list({
+          maxResults,
+          pageToken: opts?.pageToken,
+          labelIds: query ? undefined : ["INBOX"],
+          q: query || undefined,
+        }),
+        GMAIL_LIST_TIMEOUT_MS,
+        "Gmail thread list timed out",
+      );
+    } catch (error) {
+      logger.warn("Gmail thread list failed, serving Corsair DB / local cache", {
+        tenantId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      incrementCounter("inbox.gmail_list_error");
+      return await this.fallbackListThreads(tenantId, query, maxResults);
+    }
+
+    const ids = (listResult.threads ?? [])
+      .map((thread) => thread.id)
+      .filter((id): id is string => Boolean(id));
+
+    const cache = await mailCache.getHistoryMap(tenantId, ids);
+
+    if (!forceRefresh) {
+      const allCached = ids.every((id) => isUsableCacheRow(cache.get(id)));
+      if (allCached) {
+        incrementCounter("inbox.cache_hit");
+        this.enrichThreads(tenantId, corsair, ids).catch((error) => {
+          logger.warn("Background inbox refresh failed", {
+            tenantId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return {
+          threads: ids.map((id) => threadFromCacheOnly(id, cache.get(id)!)),
+          nextPageToken: listResult.nextPageToken,
+          stale: true,
+        };
+      }
+    }
+
+    const idsNeedingLive = forceRefresh
+      ? ids
+      : ids.filter((id) => !isUsableCacheRow(cache.get(id)));
+
+    const resolved = new Map<string, InboxThread>();
+    for (const id of ids) {
+      const row = cache.get(id);
+      if (!forceRefresh && row && isUsableCacheRow(row) && !idsNeedingLive.includes(id)) {
+        resolved.set(id, threadFromCacheOnly(id, row));
+      }
+    }
+
+    const enrichedMap = await this.resolveLiveEnrichedThreads({
+      tenantId,
+      corsair,
+      idsNeedingLive,
+      cache,
     });
 
     for (const [id, thread] of enrichedMap) {

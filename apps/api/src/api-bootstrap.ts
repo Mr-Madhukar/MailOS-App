@@ -25,20 +25,20 @@ export type ApiBootstrapOptions = {
   serverless?: boolean;
 };
 
-export async function runApiBootstrap(opts: ApiBootstrapOptions = {}): Promise<void> {
-  const { serverless = false } = opts;
-
-  if (!serverless) {
-    try {
-      await runMigrations();
-      logger.info("Database schema patches applied");
-    } catch (err) {
-      logger.error("Database migration failed", { err });
-    }
-  } else {
+async function bootstrapDatabaseMigrations(serverless: boolean): Promise<void> {
+  if (serverless) {
     logger.info("Serverless environment: skipping startup database migrations");
+    return;
   }
+  try {
+    await runMigrations();
+    logger.info("Database schema patches applied");
+  } catch (err) {
+    logger.error("Database migration failed", { err });
+  }
+}
 
+async function bootstrapInboxService(): Promise<void> {
   try {
     const inbox = new CorsairInboxService();
     if (process.env.THREAD_E2E_MOCK_GMAIL === "true") {
@@ -53,38 +53,55 @@ export async function runApiBootstrap(opts: ApiBootstrapOptions = {}): Promise<v
       message: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+function registerSafe(name: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    logger.warn(`${name} service registration failed`, {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function bootstrapCoreServices(): void {
+  registerSafe("Calendar", () => registerCalendarService(new CorsairCalendarService()));
+  registerSafe("Queue", () => registerQueueService(new ThreadQueueService()));
+  registerSafe("Contacts", () => registerContactsService(new DbContactsService()));
+  registerSafe("Settings", () => registerSettingsService(new DbSettingsService()));
+}
+
+async function bootstrapBackgroundJobs(serverless: boolean): Promise<void> {
+  if (serverless) {
+    return;
+  }
 
   try {
-    registerCalendarService(new CorsairCalendarService());
+    const { startIntegrationRenewalJob } = await import("./jobs/integration-renewal");
+    startIntegrationRenewalJob();
   } catch (err) {
-    logger.warn("Calendar service registration failed", {
+    logger.warn("Integration renewal job skipped", {
       message: err instanceof Error ? err.message : String(err),
     });
   }
 
   try {
-    registerQueueService(new ThreadQueueService());
+    const { startSyncEventRedisBridge } = await import("./services/sync-events");
+    await startSyncEventRedisBridge();
   } catch (err) {
-    logger.warn("Queue service registration failed", {
+    logger.warn("Sync event Redis bridge skipped", {
       message: err instanceof Error ? err.message : String(err),
     });
   }
+}
 
-  try {
-    registerContactsService(new DbContactsService());
-  } catch (err) {
-    logger.warn("Contacts service registration failed", {
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
+export async function runApiBootstrap(opts: ApiBootstrapOptions = {}): Promise<void> {
+  const { serverless = false } = opts;
 
-  try {
-    registerSettingsService(new DbSettingsService());
-  } catch (err) {
-    logger.warn("Settings service registration failed", {
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
+  await bootstrapDatabaseMigrations(serverless);
+  await bootstrapInboxService();
+  bootstrapCoreServices();
 
   try {
     await bootstrapCorsair();
@@ -94,25 +111,7 @@ export async function runApiBootstrap(opts: ApiBootstrapOptions = {}): Promise<v
     });
   }
 
-  if (!serverless) {
-    try {
-      const { startIntegrationRenewalJob } = await import("./jobs/integration-renewal");
-      startIntegrationRenewalJob();
-    } catch (err) {
-      logger.warn("Integration renewal job skipped", {
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    try {
-      const { startSyncEventRedisBridge } = await import("./services/sync-events");
-      await startSyncEventRedisBridge();
-    } catch (err) {
-      logger.warn("Sync event Redis bridge skipped", {
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  await bootstrapBackgroundJobs(serverless);
 
   logger.info(
     isEmailConfigured()

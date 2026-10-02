@@ -16,11 +16,11 @@ const AUTH_NAV = [
 ];
 
 type MailosAuthScreenProps = {
-  mode?: AuthMode;
-  errorMessage?: string;
-  nextPath?: string;
-  pendingTwoFactorEmail?: string;
-  onCloseAction?: () => void;
+  readonly mode?: AuthMode;
+  readonly errorMessage?: string;
+  readonly nextPath?: string;
+  readonly pendingTwoFactorEmail?: string;
+  readonly onCloseAction?: () => void;
 };
 
 export function MailosAuthScreen({
@@ -64,7 +64,7 @@ export function MailosAuthScreen({
       <main className="mailos-auth-main">
         <ThreadAuthCard
           mode={mode}
-          onModeChange={setMode}
+          onModeChangeAction={setMode}
           errorMessage={errorMessage}
           nextPath={nextPath}
           pendingTwoFactorEmail={pendingTwoFactorEmail}

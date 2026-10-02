@@ -7,12 +7,17 @@ import path from "node:path";
  */
 import { fileURLToPath } from "node:url";
 
-const currentFilename =
-  typeof __filename !== "undefined"
-    ? __filename
-    : typeof import.meta !== "undefined" && import.meta.url
-      ? fileURLToPath(import.meta.url)
-      : "";
+function resolveCurrentFilename(): string {
+  if (typeof __filename !== "undefined") {
+    return __filename;
+  }
+  if (import.meta?.url) {
+    return fileURLToPath(import.meta.url);
+  }
+  return "";
+}
+
+const currentFilename = resolveCurrentFilename();
 const corsairRequire = createRequire(currentFilename);
 
 function loadCorsairModule<T>(subpath: string): T {

@@ -100,6 +100,91 @@ async function resolveTenantId(body: unknown): Promise<string | null> {
   return user?.id ?? null;
 }
 
+type GmailHistoryRecord = {
+  messagesAdded?: Array<{ message?: { threadId?: string } }>;
+  labelsAdded?: Array<{ message?: { threadId?: string } }>;
+  labelsRemoved?: Array<{ message?: { threadId?: string } }>;
+};
+
+type GmailHistoryResponse = {
+  history?: GmailHistoryRecord[];
+  historyId?: string;
+};
+
+function extractAffectedThreadIds(records: GmailHistoryRecord[] = []): Set<string> {
+  const affectedThreadIds = new Set<string>();
+  for (const record of records) {
+    record.messagesAdded?.forEach((item) => {
+      if (item.message?.threadId) affectedThreadIds.add(item.message.threadId);
+    });
+    record.labelsAdded?.forEach((item) => {
+      if (item.message?.threadId) affectedThreadIds.add(item.message.threadId);
+    });
+    record.labelsRemoved?.forEach((item) => {
+      if (item.message?.threadId) affectedThreadIds.add(item.message.threadId);
+    });
+  }
+  return affectedThreadIds;
+}
+
+async function fetchGmailHistory(
+  tenantId: string,
+  storedHistoryId: string,
+): Promise<GmailHistoryResponse | undefined> {
+  const corsair = getCorsair().withTenant(tenantId);
+  const client = corsair.gmail.api as unknown as {
+    users: {
+      history?: {
+        list: (opts: {
+          startHistoryId: string;
+          historyTypes?: string[];
+        }) => Promise<GmailHistoryResponse>;
+      };
+    };
+  };
+  return client.users.history?.list({
+    startHistoryId: storedHistoryId,
+    historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
+  });
+}
+
+async function tryIncrementalGmailSync(
+  tenantId: string,
+  storedHistoryId: string,
+  incomingHistoryId?: string,
+): Promise<boolean> {
+  try {
+    const historyResp = await fetchGmailHistory(tenantId, storedHistoryId);
+    if (!historyResp) {
+      return false;
+    }
+
+    const affectedThreadIds = extractAffectedThreadIds(historyResp.history);
+    const nextHistoryId = historyResp.historyId || incomingHistoryId;
+    if (nextHistoryId) {
+      await setLastHistoryId(tenantId, nextHistoryId);
+    }
+
+    if (affectedThreadIds.size > 0) {
+      logger.info("Gmail history sync: refreshing affected threads", {
+        tenantId,
+        count: affectedThreadIds.size,
+      });
+      await Promise.all([...affectedThreadIds].map((id) => mailCache.remove(tenantId, id)));
+    }
+
+    await refreshTenantInbox(tenantId);
+    publishSyncEvent({ type: "inbox_updated", tenantId });
+    return true;
+  } catch (error) {
+    logger.warn("Gmail history incremental sync failed, falling back to full refresh", {
+      tenantId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 /**
  * Uses Gmail History API for incremental sync when a stored historyId is
  * available. Falls back to a full list if history is too stale or missing.
@@ -111,69 +196,10 @@ function refreshTenantInboxIncremental(tenantId: string, incomingHistoryId?: str
       const storedHistoryId = await getLastHistoryId(tenantId);
 
       if (storedHistoryId) {
-        try {
-          const corsair = getCorsair().withTenant(tenantId);
-          const historyResp = await (corsair.gmail.api as unknown as {
-            users: {
-              history?: {
-                list: (opts: {
-                  startHistoryId: string;
-                  historyTypes?: string[];
-                }) => Promise<{
-                  history?: Array<{
-                    messagesAdded?: Array<{ message?: { threadId?: string } }>;
-                    labelsAdded?: Array<{ message?: { threadId?: string } }>;
-                    labelsRemoved?: Array<{ message?: { threadId?: string } }>;
-                  }>;
-                  historyId?: string;
-                }>;
-              };
-            };
-          }).users.history?.list({
-            startHistoryId: storedHistoryId,
-            historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
-          });
-
-          if (historyResp) {
-            const affectedThreadIds = new Set<string>();
-            for (const record of historyResp.history ?? []) {
-              for (const added of record.messagesAdded ?? []) {
-                if (added.message?.threadId) affectedThreadIds.add(added.message.threadId);
-              }
-              for (const la of record.labelsAdded ?? []) {
-                if (la.message?.threadId) affectedThreadIds.add(la.message.threadId);
-              }
-              for (const lr of record.labelsRemoved ?? []) {
-                if (lr.message?.threadId) affectedThreadIds.add(lr.message.threadId);
-              }
-            }
-
-            if (historyResp.historyId) {
-              await setLastHistoryId(tenantId, historyResp.historyId);
-            } else if (incomingHistoryId) {
-              await setLastHistoryId(tenantId, incomingHistoryId);
-            }
-
-            if (affectedThreadIds.size > 0) {
-              logger.info("Gmail history sync: refreshing affected threads", {
-                tenantId,
-                count: affectedThreadIds.size,
-              });
-              for (const threadId of affectedThreadIds) {
-                await mailCache.remove(tenantId, threadId);
-              }
-            }
-
-            await refreshTenantInbox(tenantId);
-            publishSyncEvent({ type: "inbox_updated", tenantId });
-            span.setStatus({ code: SpanStatusCode.OK });
-            return;
-          }
-        } catch (error) {
-          logger.warn("Gmail history incremental sync failed, falling back to full refresh", {
-            tenantId,
-            message: error instanceof Error ? error.message : String(error),
-          });
+        const synced = await tryIncrementalGmailSync(tenantId, storedHistoryId, incomingHistoryId);
+        if (synced) {
+          span.setStatus({ code: SpanStatusCode.OK });
+          return;
         }
       }
 

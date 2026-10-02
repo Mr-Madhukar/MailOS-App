@@ -178,47 +178,48 @@ class AuthService {
     return toPublicUser(user);
   }
 
+  private async resolveAccessToken(accessToken: string, res?: Response): Promise<AuthUser | null> {
+    try {
+      const decoded = verifyAccessToken(accessToken);
+      const user = await this.findUserById(decoded.userId);
+      if (!user) return null;
+      if (!user.emailVerified) {
+        if (res) clearAuthCookies(res);
+        return null;
+      }
+      return toPublicUser(user);
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveRefreshToken(refreshToken: string, res: Response): Promise<AuthUser | null> {
+    try {
+      const decoded = verifyRefreshToken(refreshToken);
+      const user = await this.findUserById(decoded.userId);
+      if (!user || !this.isRefreshTokenCurrent(user, decoded.tokenVersion) || !user.emailVerified) {
+        clearAuthCookies(res);
+        return null;
+      }
+      issueAuthCookies(res, toTokenUser(user));
+      return toPublicUser(user);
+    } catch {
+      clearAuthCookies(res);
+      return null;
+    }
+  }
+
   public async resolveSession(req: Request, res?: Response): Promise<AuthUser | null> {
     const accessToken = req.cookies?.jwt as string | undefined;
     const refreshToken = req.cookies?.jwt_refresh as string | undefined;
 
-    const rejectUnverified = (user: SelectUser | null) => {
-      if (user && !user.emailVerified) {
-        if (res) clearAuthCookies(res);
-        return null;
-      }
-      return user ? toPublicUser(user) : null;
-    };
-
     if (accessToken) {
-      try {
-        const decoded = verifyAccessToken(accessToken);
-        const user = await this.findUserById(decoded.userId);
-        return rejectUnverified(user);
-      } catch {
-        // access token expired — try refresh below
-      }
+      const user = await this.resolveAccessToken(accessToken, res);
+      if (user) return user;
     }
 
     if (refreshToken && res) {
-      try {
-        const decoded = verifyRefreshToken(refreshToken);
-        const user = await this.findUserById(decoded.userId);
-        if (!user) return null;
-        if (!this.isRefreshTokenCurrent(user, decoded.tokenVersion)) {
-          clearAuthCookies(res);
-          return null;
-        }
-        if (!user.emailVerified) {
-          clearAuthCookies(res);
-          return null;
-        }
-        issueAuthCookies(res, toTokenUser(user));
-        return toPublicUser(user);
-      } catch {
-        if (res) clearAuthCookies(res);
-        return null;
-      }
+      return this.resolveRefreshToken(refreshToken, res);
     }
 
     return null;
@@ -583,6 +584,80 @@ class AuthService {
     return toPublicUser(updated);
   }
 
+  private async resolveGoogleUser(payload: {
+    email: string;
+    name?: string;
+    email_verified?: boolean;
+    sub: string;
+    picture?: string;
+  }): Promise<SelectUser> {
+    const sanitizedEmail = sanitizeEmail(payload.email);
+    const existing = await this.findUserByEmail(sanitizedEmail);
+
+    if (!existing) {
+      const [created] = await db
+        .insert(usersTable)
+        .values({
+          fullName: payload.name?.trim() || sanitizedEmail.split("@")[0] || "User",
+          email: sanitizedEmail,
+          emailVerified: payload.email_verified ?? false,
+          authProvider: "google",
+          providerId: payload.sub,
+          profileImageUrl: payload.picture ?? null,
+        })
+        .returning();
+
+      if (!created) {
+        throw new AuthError("INTERNAL", "Unable to sign in with Google");
+      }
+      return created;
+    }
+
+    if (existing.authProvider === "local") {
+      throw new AuthError(
+        "CONFLICT",
+        "An account with this email already exists. Sign in with your password first.",
+      );
+    }
+
+    if (existing.authProvider !== "google") {
+      throw new AuthError("CONFLICT", "Sign in with your existing account method for this email.");
+    }
+
+    if (existing.providerId && existing.providerId !== payload.sub) {
+      throw new AuthError("CONFLICT", "This email is linked to a different Google account.");
+    }
+
+    if (!existing.providerId) {
+      await db
+        .update(usersTable)
+        .set({
+          providerId: payload.sub,
+          profileImageUrl: existing.profileImageUrl ?? payload.picture ?? null,
+          emailVerified: existing.emailVerified || (payload.email_verified ?? false),
+        })
+        .where(eq(usersTable.id, existing.id));
+      const updated = await this.findUserById(existing.id);
+      if (updated) return updated;
+    }
+
+    return existing;
+  }
+
+  private async handleUnverifiedOAuthUser(user: SelectUser, res: Response): Promise<string> {
+    clearAuthCookies(res);
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    await db
+      .update(usersTable)
+      .set({
+        verificationToken: hashAuthSecret(verificationToken),
+        verificationTokenExpire: verificationExpiry(),
+      })
+      .where(eq(usersTable.id, user.id));
+    await sendVerificationEmail(user.email, verificationToken);
+    return `${env.CLIENT_URL}/check-email?email=${encodeURIComponent(user.email)}`;
+  }
+
   public async handleGoogleCallback(
     code: string,
     res: Response,
@@ -618,67 +693,16 @@ class AuthService {
         throw new AuthError("UNAUTHORIZED", "Google account email not available");
       }
 
-      const sanitizedEmail = sanitizeEmail(payload.email);
-      let user = await this.findUserByEmail(sanitizedEmail);
-
-      if (!user) {
-        const [created] = await db
-          .insert(usersTable)
-          .values({
-            fullName: payload.name?.trim() || sanitizedEmail.split("@")[0] || "User",
-            email: sanitizedEmail,
-            emailVerified: payload.email_verified ?? false,
-            authProvider: "google",
-            providerId: payload.sub,
-            profileImageUrl: payload.picture ?? null,
-          })
-          .returning();
-
-        if (!created) {
-          throw new AuthError("INTERNAL", "Unable to sign in with Google");
-        }
-
-        user = created;
-      } else if (user.authProvider === "local") {
-        throw new AuthError(
-          "CONFLICT",
-          "An account with this email already exists. Sign in with your password first.",
-        );
-      } else if (user.authProvider === "google") {
-        if (user.providerId && user.providerId !== payload.sub) {
-          throw new AuthError("CONFLICT", "This email is linked to a different Google account.");
-        }
-        if (!user.providerId) {
-          await db
-            .update(usersTable)
-            .set({
-              providerId: payload.sub,
-              profileImageUrl: user.profileImageUrl ?? payload.picture ?? null,
-              emailVerified: user.emailVerified || (payload.email_verified ?? false),
-            })
-            .where(eq(usersTable.id, user.id));
-          user = (await this.findUserById(user.id))!;
-        }
-      } else {
-        throw new AuthError("CONFLICT", "Sign in with your existing account method for this email.");
-      }
-
-      if (!user) {
-        throw new AuthError("INTERNAL", "Unable to sign in with Google");
-      }
+      const user = await this.resolveGoogleUser({
+        email: payload.email,
+        name: payload.name,
+        email_verified: payload.email_verified,
+        sub: payload.sub,
+        picture: payload.picture,
+      });
 
       if (!user.emailVerified) {
-        clearAuthCookies(res);
-        const verificationToken = crypto.randomBytes(32).toString("hex");
-        await db
-          .update(usersTable)
-          .set({
-            verificationToken: hashAuthSecret(verificationToken),
-            verificationTokenExpire: verificationExpiry(),
-          })
-          .where(eq(usersTable.id, user.id));
-        await sendVerificationEmail(user.email, verificationToken);
-        return `${env.CLIENT_URL}/check-email?email=${encodeURIComponent(user.email)}`;
+        return await this.handleUnverifiedOAuthUser(user, res);
       }
 
       // Google already verified identity — skip app-level 2FA for OAuth sign-in.

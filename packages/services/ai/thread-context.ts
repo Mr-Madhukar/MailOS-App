@@ -63,6 +63,117 @@ function buildThreadContextPrompt(opts: {
   return lines.join("\n");
 }
 
+function buildRelatedQuery(
+  subjectKeyword: string,
+  fromEmail: string,
+  threadId: string,
+): string | null {
+  if (subjectKeyword) {
+    return `subject:"${subjectKeyword.replaceAll('"', "")}" -id:${threadId}`;
+  }
+  if (fromEmail) {
+    return `from:${fromEmail} -id:${threadId} newer_than:30d`;
+  }
+  return null;
+}
+
+async function fetchRelatedThreadsAndEvents(
+  inbox: ReturnType<typeof getInboxService>,
+  calendar: ReturnType<typeof getCalendarService>,
+  opts: {
+    tenantId: string;
+    threadId: string;
+    subject: string;
+    fromEmail: string;
+    threadDate?: string | Date;
+  },
+): Promise<{
+  relatedThreads: Array<{ id: string; subject: string; from: string; date?: string }>;
+  relatedEvents: Array<{ id: string; summary: string; start?: string }>;
+}> {
+  const subjectKeyword = opts.subject.replace(/^(re:|fwd?:)\s*/i, "").trim().slice(0, 60);
+  const relatedQuery = buildRelatedQuery(subjectKeyword, opts.fromEmail, opts.threadId);
+
+  const relatedThreadsPromise = relatedQuery
+    ? inbox
+        .listThreads(opts.tenantId, { maxResults: 5, query: relatedQuery })
+        .catch(() => ({ threads: [] }))
+    : Promise.resolve({ threads: [] });
+
+  const dateObj = opts.threadDate ? new Date(opts.threadDate) : new Date();
+  const eventWindowStart = new Date(dateObj.getTime() - 3 * 86_400_000).toISOString();
+  const eventWindowEnd = new Date(dateObj.getTime() + 7 * 86_400_000).toISOString();
+
+  const calStatus = await calendar.getConnectionStatus(opts.tenantId);
+  const relatedEventsPromise =
+    calStatus.googlecalendar === "connected"
+      ? calendar
+          .listEvents(opts.tenantId, {
+            timeMin: eventWindowStart,
+            timeMax: eventWindowEnd,
+            maxResults: 5,
+          })
+          .catch(() => ({ events: [] }))
+      : Promise.resolve({ events: [] });
+
+  const [relatedThreadsResult, relatedEventsResult] = await Promise.all([
+    relatedThreadsPromise,
+    relatedEventsPromise,
+  ]);
+
+  const relatedThreads = relatedThreadsResult.threads
+    .filter((t) => t.id !== opts.threadId)
+    .slice(0, 4)
+    .map((t) => ({
+      id: t.id,
+      subject: t.subject?.trim() || "No subject",
+      from: t.fromName?.trim() || t.from?.trim() || "Unknown",
+      date: t.date,
+    }));
+
+  const relatedEvents = relatedEventsResult.events
+    .filter((e) => e.status !== "cancelled")
+    .slice(0, 3)
+    .map((e) => ({ id: e.id, summary: e.summary?.trim() || "Untitled", start: e.start }));
+
+  return { relatedThreads, relatedEvents };
+}
+
+function checkFollowUpNeeded(
+  messages: Array<{ from?: string; date?: string }>,
+  threadDate?: string,
+  userEmailInput?: string,
+): boolean {
+  const lastMsg = messages[messages.length - 1];
+  const lastMsgFrom = extractEmailAddress(lastMsg?.from) ?? "";
+  const userEmail = normalizeEmail(userEmailInput) ?? "";
+  const lastWasUser = userEmail && lastMsgFrom.includes(userEmail);
+  const daysSinceLast = daysSince(lastMsg?.date ?? threadDate);
+  return Boolean(lastWasUser && daysSinceLast != null && daysSinceLast >= 2);
+}
+
+type AIContextResult = {
+  whyMatters?: string;
+  nextAction?: string;
+  isFollowUpNeeded?: boolean;
+  followUpSuggestion?: string;
+};
+
+async function synthesizeThreadContextAi(prompt: string): Promise<AIContextResult> {
+  try {
+    const raw = await createChatCompletion(
+      [
+        { role: "system", content: CONTEXT_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      { jsonObject: true, temperature: 0.3 },
+    );
+    return JSON.parse(raw) as AIContextResult;
+  } catch {
+    return {};
+  }
+}
+
 export async function getThreadContext(input: {
   tenantId: string;
   threadId: string;
@@ -91,67 +202,16 @@ export async function getThreadContext(input: {
   const fromEmail = extractEmailAddress(thread.from) ?? thread.from ?? "";
   const senderName = thread.fromName?.trim();
 
-  // Corsair: search related threads by subject keywords and sender
-  const subjectKeyword = subject.replace(/^(re:|fwd?:)\s*/i, "").trim().slice(0, 60);
-  const relatedQuery = subjectKeyword
-    ? `subject:"${subjectKeyword.replaceAll('"', "")}" -id:${input.threadId}`
-    : fromEmail
-      ? `from:${fromEmail} -id:${input.threadId} newer_than:30d`
-      : null;
+  const { relatedThreads, relatedEvents } = await fetchRelatedThreadsAndEvents(inbox, calendar, {
+    tenantId: input.tenantId,
+    threadId: input.threadId,
+    subject,
+    fromEmail,
+    threadDate: thread.date,
+  });
 
-  const relatedThreadsPromise = relatedQuery
-    ? inbox
-        .listThreads(input.tenantId, { maxResults: 5, query: relatedQuery })
-        .catch(() => ({ threads: [] }))
-    : Promise.resolve({ threads: [] });
+  const followUpNeeded = checkFollowUpNeeded(thread.messages ?? [], thread.date, input.userEmail);
 
-  // Corsair: related calendar events around the thread date
-  const threadDate = thread.date ? new Date(thread.date) : new Date();
-  const eventWindowStart = new Date(threadDate.getTime() - 3 * 86_400_000).toISOString();
-  const eventWindowEnd = new Date(threadDate.getTime() + 7 * 86_400_000).toISOString();
-
-  const calStatus = await calendar.getConnectionStatus(input.tenantId);
-  const relatedEventsPromise =
-    calStatus.googlecalendar === "connected"
-      ? calendar
-          .listEvents(input.tenantId, {
-            timeMin: eventWindowStart,
-            timeMax: eventWindowEnd,
-            maxResults: 5,
-          })
-          .catch(() => ({ events: [] }))
-      : Promise.resolve({ events: [] });
-
-  const [relatedThreadsResult, relatedEventsResult] = await Promise.all([
-    relatedThreadsPromise,
-    relatedEventsPromise,
-  ]);
-
-  const relatedThreads = relatedThreadsResult.threads
-    .filter((t) => t.id !== input.threadId)
-    .slice(0, 4)
-    .map((t) => ({
-      id: t.id,
-      subject: t.subject?.trim() || "No subject",
-      from: t.fromName?.trim() || t.from?.trim() || "Unknown",
-      date: t.date,
-    }));
-
-  const relatedEvents = relatedEventsResult.events
-    .filter((e) => e.status !== "cancelled")
-    .slice(0, 3)
-    .map((e) => ({ id: e.id, summary: e.summary?.trim() || "Untitled", start: e.start }));
-
-  // Detect if user needs to follow up (last message was from user, no reply, > 2 days)
-  const messages = thread.messages ?? [];
-  const lastMsg = messages[messages.length - 1];
-  const lastMsgFrom = extractEmailAddress(lastMsg?.from) ?? "";
-  const userEmail = normalizeEmail(input.userEmail) ?? "";
-  const lastWasUser = userEmail && lastMsgFrom.includes(userEmail);
-  const daysSinceLast = daysSince(lastMsg?.date ?? thread.date);
-  const followUpNeeded = Boolean(lastWasUser && daysSinceLast != null && daysSinceLast >= 2);
-
-  // Sender last interaction
   const senderInfo = fromEmail
     ? {
         email: fromEmail,
@@ -160,7 +220,6 @@ export async function getThreadContext(input: {
       }
     : null;
 
-  // OpenAI — why this matters + next action
   if (!isOpenAiConfigured()) {
     return {
       threadId: input.threadId,
@@ -185,26 +244,7 @@ export async function getThreadContext(input: {
     userEmail: input.userEmail,
   });
 
-  type AIContextResult = {
-    whyMatters?: string;
-    nextAction?: string;
-    isFollowUpNeeded?: boolean;
-    followUpSuggestion?: string;
-  };
-
-  let ai: AIContextResult = {};
-  try {
-    const raw = await createChatCompletion(
-      [
-        { role: "system", content: CONTEXT_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      { jsonObject: true, temperature: 0.3 },
-    );
-    ai = JSON.parse(raw) as AIContextResult;
-  } catch {
-    // Fall through to defaults
-  }
+  const ai = await synthesizeThreadContextAi(prompt);
 
   return {
     threadId: input.threadId,

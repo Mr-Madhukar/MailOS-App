@@ -63,35 +63,28 @@ function parseDate(text: string, refDate: Date): { date: Date; rest: string } | 
     return { date: new Date(d.getFullYear(), d.getMonth(), d.getDate()), rest: stripOnce(text, /\btomorrow\b/i) };
   }
 
-  const dayMonth = text.match(
-    /\b(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i,
-  );
-  if (dayMonth) {
-    const day = Number.parseInt(dayMonth[1] ?? "", 10);
-    const month = monthIndex(dayMonth[2] ?? "");
+  for (const match of text.matchAll(/\b(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\b/gi)) {
+    const day = Number.parseInt(match[1] ?? "", 10);
+    const month = monthIndex(match[2] ?? "");
     if (month !== null && day >= 1 && day <= 31) {
-      return { date: resolveDayMonth(day, month, refDate), rest: stripOnce(text, dayMonth[0]) };
+      return { date: resolveDayMonth(day, month, refDate), rest: stripOnce(text, match[0]) };
     }
   }
 
-  const monthDay = text.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i,
-  );
-  if (monthDay) {
-    const month = monthIndex(monthDay[1] ?? "");
-    const day = Number.parseInt(monthDay[2] ?? "", 10);
+  for (const match of text.matchAll(/\b([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\b/gi)) {
+    const month = monthIndex(match[1] ?? "");
+    const day = Number.parseInt(match[2] ?? "", 10);
     if (month !== null && day >= 1 && day <= 31) {
-      return { date: resolveDayMonth(day, month, refDate), rest: stripOnce(text, monthDay[0]) };
+      return { date: resolveDayMonth(day, month, refDate), rest: stripOnce(text, match[0]) };
     }
   }
 
-  const dayOnly = text.match(/\b(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?(?!\s*(?:am|pm|:|\d))\b/i);
-  if (dayOnly) {
-    const day = Number.parseInt(dayOnly[1] ?? "", 10);
+  for (const match of text.matchAll(/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?!\s*(?:am|pm|:|\d))\b/gi)) {
+    const day = Number.parseInt(match[1] ?? "", 10);
     if (day >= 1 && day <= 31) {
       return {
         date: resolveDayMonth(day, refDate.getMonth(), refDate),
-        rest: stripOnce(text, dayOnly[0]),
+        rest: stripOnce(text, match[0]),
       };
     }
   }

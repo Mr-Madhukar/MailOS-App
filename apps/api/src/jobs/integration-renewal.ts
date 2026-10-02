@@ -35,6 +35,38 @@ async function listConnectedTenantIds(): Promise<string[]> {
   }
 }
 
+async function renewTenantGmail(inbox: CorsairInboxService, tenantId: string): Promise<void> {
+  try {
+    const gmailStatus = await inbox.getConnectionStatus(tenantId);
+    if (gmailStatus.gmail === "connected") {
+      await inbox.registerGmailWatch(tenantId);
+    }
+  } catch (error) {
+    logger.warn("integration-renewal: Gmail watch failed", {
+      tenantId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function renewTenantCalendar(
+  calendar: CorsairCalendarService,
+  tenantId: string,
+  webhooksBaseUrl: string,
+): Promise<void> {
+  try {
+    const calStatus = await calendar.getConnectionStatus(tenantId);
+    if (calStatus.googlecalendar === "connected") {
+      await calendar.registerWebhook(tenantId, `${webhooksBaseUrl}/webhooks/calendar`);
+    }
+  } catch (error) {
+    logger.warn("integration-renewal: Calendar channel failed", {
+      tenantId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function renewIntegrationsForAllTenants() {
   if (!isCorsairConfigured()) return;
 
@@ -50,31 +82,12 @@ export async function renewIntegrationsForAllTenants() {
 
   logger.info("integration-renewal: starting", { tenants: tenantIds.length });
 
-  for (const tenantId of tenantIds) {
-    try {
-      const gmailStatus = await inbox.getConnectionStatus(tenantId);
-      if (gmailStatus.gmail === "connected") {
-        await inbox.registerGmailWatch(tenantId);
-      }
-    } catch (error) {
-      logger.warn("integration-renewal: Gmail watch failed", {
-        tenantId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    try {
-      const calStatus = await calendar.getConnectionStatus(tenantId);
-      if (calStatus.googlecalendar === "connected") {
-        await calendar.registerWebhook(tenantId, `${webhooksBaseUrl}/webhooks/calendar`);
-      }
-    } catch (error) {
-      logger.warn("integration-renewal: Calendar channel failed", {
-        tenantId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  await Promise.all(
+    tenantIds.map(async (tenantId) => {
+      await renewTenantGmail(inbox, tenantId);
+      await renewTenantCalendar(calendar, tenantId, webhooksBaseUrl);
+    }),
+  );
 
   logger.info("integration-renewal: complete", { tenants: tenantIds.length });
 }
@@ -84,7 +97,7 @@ export function startIntegrationRenewalJob() {
   if (process.env.DISABLE_INTEGRATION_RENEWAL === "true") return;
 
   const tick = () => {
-    void (async () => {
+    (async () => {
       const isLeader = await acquireLeaderLock(LEADER_LOCK_NAME, LEADER_LOCK_TTL_MS);
       if (!isLeader) {
         logger.debug("integration-renewal: skipped (another replica holds the lock)");

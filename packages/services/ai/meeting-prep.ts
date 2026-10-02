@@ -67,6 +67,92 @@ function buildMeetingPrompt(opts: {
   return lines.join("\n");
 }
 
+type RelatedEmailItem = { id: string; subject: string; from: string; snippet: string; attachments?: string[] };
+
+function buildMeetingSearchQueries(summary: string, attendeeEmails: string[]): string[] {
+  const searchQueries: string[] = [];
+  if (summary.length > 3) {
+    searchQueries.push(`newer_than:30d subject:"${summary.replaceAll('"', "").slice(0, 50)}"`);
+  }
+  for (const email of attendeeEmails.slice(0, 2)) {
+    searchQueries.push(`newer_than:14d from:${email}`);
+  }
+  return searchQueries;
+}
+
+async function fetchRelatedEmails(
+  inbox: ReturnType<typeof getInboxService>,
+  tenantId: string,
+  searchQueries: string[]
+): Promise<RelatedEmailItem[]> {
+  const gmailStatus = await inbox.getConnectionStatus(tenantId);
+  if (gmailStatus.gmail !== "connected") {
+    return [];
+  }
+
+  const relatedEmailsRaw: RelatedEmailItem[] = [];
+  const seen = new Set<string>();
+
+  for (const query of searchQueries) {
+    try {
+      const result = await inbox.listThreads(tenantId, { maxResults: 4, query });
+      for (const t of result.threads) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        const attachmentNames = (t.messages ?? [])
+          .flatMap((m) => m.attachments ?? [])
+          .map((a) => a.filename)
+          .filter(Boolean);
+        relatedEmailsRaw.push({
+          id: t.id,
+          subject: t.subject?.trim() || "No subject",
+          from: t.fromName?.trim() || t.from?.trim() || "Unknown",
+          snippet: t.snippet?.trim() || "",
+          attachments: attachmentNames.length > 0 ? attachmentNames : undefined,
+        });
+      }
+    } catch {
+      // skip failed searches
+    }
+    if (relatedEmailsRaw.length >= 6) break;
+  }
+
+  return relatedEmailsRaw.slice(0, 6);
+}
+
+function buildDefaultRisks(description?: string, attendeeCount: number = 0): string[] {
+  const defaultRisks: string[] = [];
+  if (!description?.trim() || description.trim().length < 20) {
+    defaultRisks.push("No agenda in the calendar invite");
+  }
+  if (attendeeCount === 0) {
+    defaultRisks.push("No attendees listed");
+  }
+  return defaultRisks;
+}
+
+type AIPrep = {
+  agenda?: string;
+  talkingPoints?: string[];
+  risks?: string[];
+  prepNote?: string;
+};
+
+async function synthesizeMeetingPrepAi(prompt: string): Promise<AIPrep> {
+  try {
+    const raw = await createChatCompletion(
+      [
+        { role: "system", content: MEETING_PREP_SYSTEM },
+        { role: "user", content: prompt },
+      ],
+      { jsonObject: true, temperature: 0.35 },
+    );
+    return JSON.parse(raw) as AIPrep;
+  } catch {
+    return {};
+  }
+}
+
 export async function getMeetingPrep(input: {
   tenantId: string;
   eventId: string;
@@ -99,61 +185,15 @@ export async function getMeetingPrep(input: {
     .map((a) => a.email?.trim())
     .filter(Boolean) as string[];
 
-  // Corsair Gmail search — related emails by subject or attendee
   const summary = event.summary?.trim() || "";
-  const searchQueries: string[] = [];
+  const searchQueries = buildMeetingSearchQueries(summary, attendeeEmails);
+  const relatedEmails = await fetchRelatedEmails(inbox, input.tenantId, searchQueries);
+  const defaultRisks = buildDefaultRisks(event.description, attendees.length);
 
-  if (summary.length > 3) {
-    searchQueries.push(
-      `newer_than:30d subject:"${summary.replaceAll('"', "").slice(0, 50)}"`,
-    );
-  }
-  for (const email of attendeeEmails.slice(0, 2)) {
-    searchQueries.push(`newer_than:14d from:${email}`);
-  }
-
-  const gmailStatus = await inbox.getConnectionStatus(input.tenantId);
-  const relatedEmailsRaw: Array<{ id: string; subject: string; from: string; snippet: string; attachments?: string[] }> = [];
-
-  if (gmailStatus.gmail === "connected") {
-    const seen = new Set<string>();
-    for (const query of searchQueries) {
-      try {
-        const result = await inbox.listThreads(input.tenantId, { maxResults: 4, query });
-        for (const t of result.threads) {
-          if (!seen.has(t.id)) {
-            seen.add(t.id);
-            // Collect attachment names from messages if available
-            const attachmentNames = (t.messages ?? [])
-              .flatMap((m) => m.attachments ?? [])
-              .map((a) => a.filename)
-              .filter(Boolean);
-            relatedEmailsRaw.push({
-              id: t.id,
-              subject: t.subject?.trim() || "No subject",
-              from: t.fromName?.trim() || t.from?.trim() || "Unknown",
-              snippet: t.snippet?.trim() || "",
-              attachments: attachmentNames.length > 0 ? attachmentNames : undefined,
-            });
-          }
-        }
-      } catch {
-        // skip failed searches
-      }
-      if (relatedEmailsRaw.length >= 6) break;
-    }
-  }
-
-  const relatedEmails = relatedEmailsRaw.slice(0, 6);
-
-  // OpenAI prep
-  const defaultRisks: string[] = [];
-  if (!event.description?.trim() || event.description.trim().length < 20) {
-    defaultRisks.push("No agenda in the calendar invite");
-  }
-  if (attendees.length === 0) {
-    defaultRisks.push("No attendees listed");
-  }
+  const defaultNote =
+    relatedEmails.length > 0
+      ? `Review "${relatedEmails[0]!.subject}" before the meeting.`
+      : "Review the calendar invite and prepare notes.";
 
   if (!isOpenAiConfigured()) {
     return {
@@ -165,10 +205,7 @@ export async function getMeetingPrep(input: {
       talkingPoints: attendees.length > 0 ? [`Discuss latest updates with ${attendees[0]}`] : [],
       risks: defaultRisks,
       relatedEmails,
-      prepNote:
-        relatedEmails.length > 0
-          ? `Review "${relatedEmails[0]!.subject}" before the meeting.`
-          : "Review the calendar invite and prepare notes.",
+      prepNote: defaultNote,
     };
   }
 
@@ -180,26 +217,7 @@ export async function getMeetingPrep(input: {
     emails: relatedEmails,
   });
 
-  type AIPrep = {
-    agenda?: string;
-    talkingPoints?: string[];
-    risks?: string[];
-    prepNote?: string;
-  };
-
-  let ai: AIPrep = {};
-  try {
-    const raw = await createChatCompletion(
-      [
-        { role: "system", content: MEETING_PREP_SYSTEM },
-        { role: "user", content: prompt },
-      ],
-      { jsonObject: true, temperature: 0.35 },
-    );
-    ai = JSON.parse(raw) as AIPrep;
-  } catch {
-    // fall through
-  }
+  const ai = await synthesizeMeetingPrepAi(prompt);
 
   return {
     eventId: input.eventId,
@@ -214,10 +232,6 @@ export async function getMeetingPrep(input: {
       ? ai.risks.filter((r) => typeof r === "string").slice(0, 3)
       : defaultRisks,
     relatedEmails,
-    prepNote:
-      (typeof ai.prepNote === "string" && ai.prepNote.trim()) ||
-      (relatedEmails.length > 0
-        ? `Review "${relatedEmails[0]!.subject}" before the meeting.`
-        : "Review the calendar invite and prepare notes."),
+    prepNote: (typeof ai.prepNote === "string" && ai.prepNote.trim()) || defaultNote,
   };
 }

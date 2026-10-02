@@ -25,7 +25,7 @@ export function buildGmailWebhookHooks() {
     messageChanged: {
       after(ctx: unknown) {
         const tenantId = tenantIdFromCtx(ctx);
-        if (tenantId) void onGmailMessageChanged?.(tenantId);
+        if (tenantId) onGmailMessageChanged?.(tenantId);
       },
     },
   };
@@ -36,7 +36,7 @@ export function buildGoogleCalendarWebhookHooks() {
     onEventChanged: {
       after(ctx: unknown) {
         const tenantId = tenantIdFromCtx(ctx);
-        if (tenantId) void onCalendarEventChanged?.(tenantId);
+        if (tenantId) onCalendarEventChanged?.(tenantId);
       },
     },
   };

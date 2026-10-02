@@ -38,61 +38,142 @@ Respond with valid JSON only:
   "recentTopics": ["...", "..."]
 }`;
 
-export async function getContactIntel(input: {
-  tenantId: string;
-  email: string;
-  name?: string;
-  userEmail?: string;
-}): Promise<ContactIntelResult> {
+type RawThreadItem = { id: string; subject?: string; date?: string; from?: string };
+
+type ContactThreadDirection = RawThreadItem & { direction: "sent" | "received" };
+
+async function fetchContactThreads(
+  tenantId: string,
+  contactEmail: string,
+): Promise<{
+  sentThreads: RawThreadItem[];
+  receivedThreads: RawThreadItem[];
+}> {
   const inbox = getInboxService();
-
-  const status = await inbox.getConnectionStatus(input.tenantId);
-  const gmailConnected = status.gmail === "connected";
-
-  const contactEmail = extractEmailAddress(input.email) || input.email;
-  const contactName = input.name ?? contactEmail.split("@")[0] ?? contactEmail;
-
-  let sentThreads: Array<{ id: string; subject?: string; date?: string; from?: string }> = [];
-  let receivedThreads: Array<{ id: string; subject?: string; date?: string; from?: string }> = [];
-
-  if (gmailConnected) {
-    try {
-      const [sentResult, receivedResult] = await Promise.all([
-        inbox.listThreads(input.tenantId, {
-          query: `to:${contactEmail} in:sent`,
-          maxResults: 15,
-        }),
-        inbox.listThreads(input.tenantId, {
-          query: `from:${contactEmail}`,
-          maxResults: 15,
-        }),
-      ]);
-      sentThreads = sentResult.threads ?? [];
-      receivedThreads = receivedResult.threads ?? [];
-    } catch {
-      // best-effort
-    }
+  const status = await inbox.getConnectionStatus(tenantId);
+  if (status.gmail !== "connected") {
+    return { sentThreads: [], receivedThreads: [] };
   }
+  try {
+    const [sentResult, receivedResult] = await Promise.all([
+      inbox.listThreads(tenantId, {
+        query: `to:${contactEmail} in:sent`,
+        maxResults: 15,
+      }),
+      inbox.listThreads(tenantId, {
+        query: `from:${contactEmail}`,
+        maxResults: 15,
+      }),
+    ]);
+    return {
+      sentThreads: sentResult.threads ?? [],
+      receivedThreads: receivedResult.threads ?? [],
+    };
+  } catch {
+    return { sentThreads: [], receivedThreads: [] };
+  }
+}
 
-  // Deduplicate by thread ID — the same thread can appear in both sent and
-  // received results (e.g. a reply thread). Prefer the "received" direction
-  // when both exist so the contact's reply is counted as the interaction.
+function mergeAndSortThreads(
+  sentThreads: RawThreadItem[],
+  receivedThreads: RawThreadItem[],
+): ContactThreadDirection[] {
   const seenIds = new Set<string>();
-  const allThreads: Array<{ id: string; subject?: string; date?: string; from?: string; direction: "sent" | "received" }> = [];
+  const allThreads: ContactThreadDirection[] = [];
   for (const t of [
-    ...receivedThreads.map((t) => ({ ...t, direction: "received" as const })),
-    ...sentThreads.map((t) => ({ ...t, direction: "sent" as const })),
+    ...receivedThreads.map((item) => ({ ...item, direction: "received" as const })),
+    ...sentThreads.map((item) => ({ ...item, direction: "sent" as const })),
   ]) {
     if (!seenIds.has(t.id)) {
       seenIds.add(t.id);
       allThreads.push(t);
     }
   }
-  allThreads.sort((a, b) => {
+  return allThreads.sort((a, b) => {
     const da = a.date ? new Date(a.date).getTime() : 0;
     const db = b.date ? new Date(b.date).getTime() : 0;
     return db - da;
   });
+}
+
+async function synthesizeContactIntel(params: {
+  contactName: string;
+  contactEmail: string;
+  totalInteractions: number;
+  sentCount: number;
+  receivedCount: number;
+  lastInteractionDaysAgo: number | null;
+  responseRate: number | null;
+  threads: ContactThreadDirection[];
+}): Promise<{ relationshipSummary: string; recommendedAction: string; recentTopics: string[] }> {
+  let relationshipSummary = `You have exchanged ${params.totalInteractions} emails with ${params.contactName}.`;
+  let recommendedAction = `Send a follow-up to ${params.contactName}.`;
+  let recentTopics: string[] = [];
+
+  if (!isOpenAiConfigured() || params.totalInteractions === 0) {
+    return { relationshipSummary, recommendedAction, recentTopics };
+  }
+
+  try {
+    const subjectList = params.threads
+      .slice(0, 10)
+      .map(
+        (t, i) =>
+          `${i + 1}. [${t.direction}] ${t.subject ?? "(no subject)"} (${t.date ? new Date(t.date).toLocaleDateString() : "unknown date"})`,
+      )
+      .join("\n");
+
+    const prompt = [
+      `Contact: ${params.contactName} <${params.contactEmail}>`,
+      `Total interactions: ${params.totalInteractions} (${params.sentCount} sent, ${params.receivedCount} received)`,
+      params.lastInteractionDaysAgo !== null
+        ? `Last interaction: ${params.lastInteractionDaysAgo} days ago`
+        : "Last interaction: unknown",
+      params.responseRate !== null
+        ? `Estimated response rate: ${Math.round(params.responseRate * 100)}%`
+        : "",
+      "",
+      "Recent email subjects:",
+      subjectList,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const raw = await createChatCompletion(
+      [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      { jsonObject: true, temperature: 0.4 },
+    );
+
+    const parsed = JSON.parse(raw) as {
+      relationshipSummary?: string;
+      recommendedAction?: string;
+      recentTopics?: string[];
+    };
+
+    if (parsed.relationshipSummary) relationshipSummary = parsed.relationshipSummary;
+    if (parsed.recommendedAction) recommendedAction = parsed.recommendedAction;
+    if (Array.isArray(parsed.recentTopics)) recentTopics = parsed.recentTopics.slice(0, 4);
+  } catch {
+    // fallback to defaults
+  }
+
+  return { relationshipSummary, recommendedAction, recentTopics };
+}
+
+export async function getContactIntel(input: {
+  tenantId: string;
+  email: string;
+  name?: string;
+  userEmail?: string;
+}): Promise<ContactIntelResult> {
+  const contactEmail = extractEmailAddress(input.email) || input.email;
+  const contactName = input.name ?? contactEmail.split("@")[0] ?? contactEmail;
+
+  const { sentThreads, receivedThreads } = await fetchContactThreads(input.tenantId, contactEmail);
+  const allThreads = mergeAndSortThreads(sentThreads, receivedThreads);
 
   const totalInteractions = allThreads.length;
   const lastThread = allThreads[0];
@@ -109,55 +190,16 @@ export async function getContactIntel(input: {
     direction: t.direction,
   }));
 
-  // AI synthesis
-  let relationshipSummary = `You have exchanged ${totalInteractions} emails with ${contactName}.`;
-  let recommendedAction = `Send a follow-up to ${contactName}.`;
-  let recentTopics: string[] = [];
-
-  if (isOpenAiConfigured() && totalInteractions > 0) {
-    try {
-      const subjectList = allThreads
-        .slice(0, 10)
-        .map((t, i) => `${i + 1}. [${t.direction}] ${t.subject ?? "(no subject)"} (${t.date ? new Date(t.date).toLocaleDateString() : "unknown date"})`)
-        .join("\n");
-
-      const prompt = [
-        `Contact: ${contactName} <${contactEmail}>`,
-        `Total interactions: ${totalInteractions} (${sentThreads.length} sent, ${receivedThreads.length} received)`,
-        lastInteractionDaysAgo !== null
-          ? `Last interaction: ${lastInteractionDaysAgo} days ago`
-          : "Last interaction: unknown",
-        responseRate !== null
-          ? `Estimated response rate: ${Math.round(responseRate * 100)}%`
-          : "",
-        "",
-        "Recent email subjects:",
-        subjectList,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const raw = await createChatCompletion(
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-        { jsonObject: true, temperature: 0.4 },
-      );
-
-      const parsed = JSON.parse(raw) as {
-        relationshipSummary?: string;
-        recommendedAction?: string;
-        recentTopics?: string[];
-      };
-
-      if (parsed.relationshipSummary) relationshipSummary = parsed.relationshipSummary;
-      if (parsed.recommendedAction) recommendedAction = parsed.recommendedAction;
-      if (Array.isArray(parsed.recentTopics)) recentTopics = parsed.recentTopics.slice(0, 4);
-    } catch {
-      // fallback to defaults
-    }
-  }
+  const synthesis = await synthesizeContactIntel({
+    contactName,
+    contactEmail,
+    totalInteractions,
+    sentCount: sentThreads.length,
+    receivedCount: receivedThreads.length,
+    lastInteractionDaysAgo,
+    responseRate,
+    threads: allThreads,
+  });
 
   return {
     email: contactEmail,
@@ -168,9 +210,9 @@ export async function getContactIntel(input: {
     sentByUser: sentThreads.length,
     receivedFromContact: receivedThreads.length,
     responseRate,
-    recentTopics,
-    relationshipSummary,
-    recommendedAction,
+    recentTopics: synthesis.recentTopics,
+    relationshipSummary: synthesis.relationshipSummary,
+    recommendedAction: synthesis.recommendedAction,
     recentThreads: recentThreadsForResult,
   };
 }

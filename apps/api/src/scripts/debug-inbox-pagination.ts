@@ -66,7 +66,9 @@ async function main() {
   console.log("stale:", fresh.stale ?? false);
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(error);
   process.exit(1);
-});
+}

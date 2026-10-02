@@ -16,11 +16,11 @@ const AUTH_NAV = [
 ];
 
 type ThreadAuthScreenProps = {
-  mode?: AuthMode;
-  errorMessage?: string;
-  nextPath?: string;
-  pendingTwoFactorEmail?: string;
-  onClose?: () => void;
+  readonly mode?: AuthMode;
+  readonly errorMessage?: string;
+  readonly nextPath?: string;
+  readonly pendingTwoFactorEmail?: string;
+  readonly onCloseAction?: () => void;
 };
 
 export function ThreadAuthScreen({
@@ -28,12 +28,12 @@ export function ThreadAuthScreen({
   errorMessage,
   nextPath,
   pendingTwoFactorEmail,
-  onClose,
+  onCloseAction,
 }: ThreadAuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
 
-  const brand = onClose ? (
-    <button type="button" className="thread-auth-screen-brand" onClick={onClose}>
+  const brand = onCloseAction ? (
+    <button type="button" className="thread-auth-screen-brand" onClick={onCloseAction}>
       <ThreadLogoMark size={24} />
       <ThreadWordmark size="sm" />
     </button>
@@ -63,7 +63,7 @@ export function ThreadAuthScreen({
       <main className="thread-auth-screen-main">
         <ThreadAuthCard
           mode={mode}
-          onModeChange={setMode}
+          onModeChangeAction={setMode}
           errorMessage={errorMessage}
           nextPath={nextPath}
           pendingTwoFactorEmail={pendingTwoFactorEmail}

@@ -18,19 +18,19 @@ import { ThreadLogoMark } from "./thread-logo";
 type AuthMode = "sign-in" | "sign-up";
 
 type ThreadAuthCardProps = {
-  mode: AuthMode;
-  onModeChange?: (mode: AuthMode) => void;
-  nextPath?: string;
-  onSuccess?: () => void;
-  errorMessage?: string;
+  readonly mode: AuthMode;
+  readonly onModeChangeAction?: (mode: AuthMode) => void;
+  readonly nextPath?: string;
+  readonly onSuccessAction?: () => void;
+  readonly errorMessage?: string;
   /** Set when redirected from sign-in after password login triggers 2FA */
-  pendingTwoFactorEmail?: string;
+  readonly pendingTwoFactorEmail?: string;
 };
 
 type SignInValues = z.infer<typeof signInInputSchema>;
 type SignUpValues = z.infer<typeof signUpInputSchema>;
 
-function GoogleIcon({ size = 18 }: { size?: number }) {
+function GoogleIcon({ size = 18 }: { readonly size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -41,7 +41,7 @@ function GoogleIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-function AuthFormPlaceholder({ fields = 2 }: { fields?: number }) {
+function AuthFormPlaceholder({ fields = 2 }: { readonly fields?: number }) {
   return (
     <div className="thread-auth-form thread-auth-form-placeholder" aria-hidden>
       {Array.from({ length: fields }).map((_, i) => (
@@ -52,11 +52,211 @@ function AuthFormPlaceholder({ fields = 2 }: { fields?: number }) {
   );
 }
 
+function submitButtonLabel(loading: boolean, twoFactor: boolean, isLogin: boolean): string {
+  if (loading) return "Please wait…";
+  if (twoFactor) return "Verify";
+  return isLogin ? "Sign in" : "Create account";
+}
+
+function getAuthTitle(twoFactor: boolean, isLogin: boolean): string {
+  if (twoFactor) return "Enter verification code";
+  return isLogin ? "Log in to MailOS" : "Create your account";
+}
+
+function getActiveErrorMessage(
+  error: string,
+  signInErrors: { email?: { message?: string }; password?: { message?: string } },
+  signUpErrors: { email?: { message?: string } },
+): string | null {
+  if (error) return error;
+  if (signInErrors.email?.message || signInErrors.password?.message || signUpErrors.email?.message) {
+    return "Check your details and try again.";
+  }
+  return null;
+}
+
+function AuthSocialHeader({
+  nextPath,
+  isLogin,
+}: {
+  readonly nextPath: string;
+  readonly isLogin: boolean;
+}) {
+  const googleHref = `/api-auth/google?state=${encodeURIComponent(sanitizeRedirectPath(nextPath))}`;
+  const showDemo = isLogin && isDemoLoginEnabled();
+  return (
+    <>
+      <a href={googleHref} className="thread-auth-google-wide">
+        <GoogleIcon size={18} />
+        Continue with Google
+      </a>
+      {showDemo && (
+        <a
+          href={`/api-auth/demo?next=${encodeURIComponent(sanitizeRedirectPath(nextPath))}`}
+          className="thread-auth-demo-wide"
+        >
+          Try demo — no signup
+        </a>
+      )}
+      <p className="thread-auth-or">or</p>
+    </>
+  );
+}
+
+function AuthModeToggleFooter({
+  isLogin,
+  onToggleAction,
+}: {
+  readonly isLogin: boolean;
+  readonly onToggleAction?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="thread-auth-footer"
+      onClick={onToggleAction}
+    >
+      {isLogin ? (
+        <>
+          Don&apos;t have an account? <span>Sign up →</span>
+        </>
+      ) : (
+        <>
+          Already have an account? <span>Log in →</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+function TwoFactorStepFields({
+  displayEmail,
+  otp,
+  onOtpChange,
+}: {
+  readonly displayEmail: string;
+  readonly otp: string;
+  readonly onOtpChange: (val: string) => void;
+}) {
+  return (
+    <>
+      <p className="thread-auth-hint">Code sent to {displayEmail}</p>
+      <input
+        className="thread-auth-input"
+        name="otp"
+        type="text"
+        value={otp}
+        onChange={(e) => onOtpChange(e.target.value)}
+        placeholder="123456"
+        required
+        autoComplete="one-time-code"
+        inputMode="numeric"
+      />
+    </>
+  );
+}
+
+function SignInFields({
+  email,
+  password,
+  onEmailChange,
+  onPasswordChange,
+}: {
+  readonly email: string;
+  readonly password: string;
+  readonly onEmailChange: (val: string) => void;
+  readonly onPasswordChange: (val: string) => void;
+}) {
+  return (
+    <>
+      <input
+        className="thread-auth-input"
+        type="email"
+        placeholder="Email address"
+        value={email}
+        onChange={(e) => onEmailChange(e.target.value)}
+        required
+        autoComplete="email"
+      />
+      <input
+        className="thread-auth-input"
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => onPasswordChange(e.target.value)}
+        required
+        autoComplete="current-password"
+      />
+    </>
+  );
+}
+
+function SignUpFields({
+  form,
+  onClearError,
+}: {
+  readonly form: ReturnType<typeof useForm<SignUpValues>>;
+  readonly onClearError: () => void;
+}) {
+  return (
+    <>
+      <input
+        className="thread-auth-input"
+        type="text"
+        placeholder="Full name"
+        value={form.watch("fullName")}
+        onChange={(e) => {
+          form.setValue("fullName", e.target.value, { shouldValidate: true });
+          onClearError();
+        }}
+        required
+        autoComplete="name"
+      />
+      <input
+        className="thread-auth-input"
+        type="email"
+        placeholder="Email address"
+        value={form.watch("email")}
+        onChange={(e) => {
+          form.setValue("email", e.target.value, { shouldValidate: true });
+          onClearError();
+        }}
+        required
+        autoComplete="email"
+      />
+      <input
+        className="thread-auth-input"
+        type="password"
+        placeholder="Password"
+        value={form.watch("password")}
+        onChange={(e) => {
+          form.setValue("password", e.target.value, { shouldValidate: true });
+          onClearError();
+        }}
+        required
+        autoComplete="new-password"
+      />
+      <input
+        className="thread-auth-input"
+        type="password"
+        placeholder="Confirm password"
+        value={form.watch("confirmPassword")}
+        onChange={(e) => {
+          form.setValue("confirmPassword", e.target.value, { shouldValidate: true });
+          onClearError();
+        }}
+        required
+        autoComplete="new-password"
+      />
+    </>
+  );
+}
+
 export function ThreadAuthCard({
   mode,
-  onModeChange,
+  onModeChangeAction,
   nextPath = "/brief",
-  onSuccess,
+  onSuccessAction,
   errorMessage,
   pendingTwoFactorEmail,
 }: ThreadAuthCardProps) {
@@ -129,59 +329,63 @@ export function ThreadAuthCard({
 
   const completeSignIn = async () => {
     await utils.auth.me.invalidate();
-    onSuccess?.();
+    onSuccessAction?.();
     window.location.assign(sanitizeRedirectPath(nextPath));
   };
 
-  const handleSubmit = isLogin
-    ? signInForm.handleSubmit(async (values) => {
-        if (!requireTurnstileToken()) return;
-        setLoading(true);
-        setError("");
-        try {
-          const result = await signInMutation.mutateAsync({
-            ...values,
-            turnstileToken: turnstileToken ?? undefined,
-          });
-          if (result.twoFactorRequired) {
-            setTwoFactorStep({
-              email: result.email,
-              displayEmail: values.email.trim() || result.email,
-              otp: "",
-            });
-            toast.info(result.message);
-            return;
-          }
-          await completeSignIn();
-        } catch (err) {
-          setError(getErrorMessage(err));
-          resetTurnstile();
-        } finally {
-          setLoading(false);
-        }
-      })
-    : signUpForm.handleSubmit(async (values) => {
-        if (!requireTurnstileToken()) return;
-        setLoading(true);
-        setError("");
-        try {
-          await signUpMutation.mutateAsync({
-            ...values,
-            turnstileToken: turnstileToken ?? undefined,
-          });
-          toast.success("Account created — verify your email to continue");
-          window.location.assign(`/check-email?email=${encodeURIComponent(values.email)}`);
-        } catch (err) {
-          const message = getErrorMessage(err);
-          setError(message);
-          resetTurnstile();
-          if (message.toLowerCase().includes("verify your email")) {
-            window.location.assign(`/check-email?email=${encodeURIComponent(values.email)}`);
-          }
-        } finally {
-          setLoading(false);
-        }
+  async function onSignInSubmit(values: SignInValues) {
+    if (!requireTurnstileToken()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await signInMutation.mutateAsync({
+        ...values,
+        turnstileToken: turnstileToken ?? undefined,
       });
+      if (result.twoFactorRequired) {
+        setTwoFactorStep({
+          email: result.email,
+          displayEmail: values.email.trim() || result.email,
+          otp: "",
+        });
+        toast.info(result.message);
+        return;
+      }
+      await completeSignIn();
+    } catch (err) {
+      setError(getErrorMessage(err));
+      resetTurnstile();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onSignUpSubmit(values: SignUpValues) {
+    if (!requireTurnstileToken()) return;
+    setLoading(true);
+    setError("");
+    try {
+      await signUpMutation.mutateAsync({
+        ...values,
+        turnstileToken: turnstileToken ?? undefined,
+      });
+      toast.success("Account created — verify your email to continue");
+      window.location.assign(`/check-email?email=${encodeURIComponent(values.email)}`);
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+      resetTurnstile();
+      if (message.toLowerCase().includes("verify your email")) {
+        window.location.assign(`/check-email?email=${encodeURIComponent(values.email)}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleSubmit = isLogin
+    ? signInForm.handleSubmit(onSignInSubmit)
+    : signUpForm.handleSubmit(onSignUpSubmit);
 
   const handleTwoFactorSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -201,7 +405,11 @@ export function ThreadAuthCard({
     }
   };
 
-  const googleHref = `/api-auth/google?state=${encodeURIComponent(sanitizeRedirectPath(nextPath))}`;
+  const activeError = getActiveErrorMessage(
+    error,
+    signInForm.formState.errors,
+    signUpForm.formState.errors,
+  );
 
   return (
     <div className="thread-auth-card">
@@ -210,7 +418,7 @@ export function ThreadAuthCard({
       </div>
 
       <h1 className="thread-auth-title">
-        {twoFactorStep ? "Enter verification code" : isLogin ? "Log in to MailOS" : "Create your account"}
+        {getAuthTitle(Boolean(twoFactorStep), isLogin)}
       </h1>
 
       {error && !mounted && <p className="thread-auth-error">{error}</p>}
@@ -224,150 +432,52 @@ export function ThreadAuthCard({
         </>
       ) : (
         <>
-          {!twoFactorStep && (
-            <>
-              <a href={googleHref} className="thread-auth-google-wide">
-                <GoogleIcon size={18} />
-                Continue with Google
-              </a>
-              {isLogin && isDemoLoginEnabled() ? (
-                <a
-                  href={`/api-auth/demo?next=${encodeURIComponent(sanitizeRedirectPath(nextPath))}`}
-                  className="thread-auth-demo-wide"
-                >
-                  Try demo — no signup
-                </a>
-              ) : null}
-              <p className="thread-auth-or">or</p>
-            </>
-          )}
+          {!twoFactorStep && <AuthSocialHeader nextPath={nextPath} isLogin={isLogin} />}
 
           <form onSubmit={twoFactorStep ? handleTwoFactorSubmit : handleSubmit} className="thread-auth-form">
-        {twoFactorStep ? (
-          <>
-            <p className="thread-auth-hint">Code sent to {twoFactorStep.displayEmail}</p>
-            <input
-              className="thread-auth-input"
-              name="otp"
-              type="text"
-              value={twoFactorStep.otp}
-              onChange={(e) =>
-                setTwoFactorStep((prev) => (prev ? { ...prev, otp: e.target.value } : prev))
-              }
-              placeholder="123456"
-              required
-              autoComplete="one-time-code"
-              inputMode="numeric"
-            />
-          </>
-        ) : isLogin ? (
-          <>
-            <input
-              className="thread-auth-input"
-              type="email"
-              placeholder="Email address"
-              value={signInForm.watch("email")}
-              onChange={(e) => {
-                signInForm.setValue("email", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="email"
-            />
-            <input
-              className="thread-auth-input"
-              type="password"
-              placeholder="Password"
-              value={signInForm.watch("password")}
-              onChange={(e) => {
-                signInForm.setValue("password", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="current-password"
-            />
-          </>
-        ) : (
-          <>
-            <input
-              className="thread-auth-input"
-              type="text"
-              placeholder="Full name"
-              value={signUpForm.watch("fullName")}
-              onChange={(e) => {
-                signUpForm.setValue("fullName", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="name"
-            />
-            <input
-              className="thread-auth-input"
-              type="email"
-              placeholder="Email address"
-              value={signUpForm.watch("email")}
-              onChange={(e) => {
-                signUpForm.setValue("email", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="email"
-            />
-            <input
-              className="thread-auth-input"
-              type="password"
-              placeholder="Password"
-              value={signUpForm.watch("password")}
-              onChange={(e) => {
-                signUpForm.setValue("password", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="new-password"
-            />
-            <input
-              className="thread-auth-input"
-              type="password"
-              placeholder="Confirm password"
-              value={signUpForm.watch("confirmPassword")}
-              onChange={(e) => {
-                signUpForm.setValue("confirmPassword", e.target.value, { shouldValidate: true });
-                setError("");
-              }}
-              required
-              autoComplete="new-password"
-            />
-          </>
-        )}
+            {twoFactorStep && (
+              <TwoFactorStepFields
+                displayEmail={twoFactorStep.displayEmail}
+                otp={twoFactorStep.otp}
+                onOtpChange={(val) =>
+                  setTwoFactorStep((prev) => (prev ? { ...prev, otp: val } : prev))
+                }
+              />
+            )}
+            {!twoFactorStep && isLogin && (
+              <SignInFields
+                email={signInForm.watch("email")}
+                password={signInForm.watch("password")}
+                onEmailChange={(val) => {
+                  signInForm.setValue("email", val, { shouldValidate: true });
+                  setError("");
+                }}
+                onPasswordChange={(val) => {
+                  signInForm.setValue("password", val, { shouldValidate: true });
+                  setError("");
+                }}
+              />
+            )}
+            {!twoFactorStep && !isLogin && (
+              <SignUpFields form={signUpForm} onClearError={() => setError("")} />
+            )}
 
-        {(error ||
-          signInForm.formState.errors.email?.message ||
-          signInForm.formState.errors.password?.message ||
-          signUpForm.formState.errors.email?.message) && (
-          <p className="thread-auth-error">{error || "Check your details and try again."}</p>
-        )}
+            {activeError && <p className="thread-auth-error">{activeError}</p>}
 
-            <button type="submit" className="thread-auth-submit" disabled={loading || (turnstileEnabled && !turnstileToken && !twoFactorStep)}>
-              {loading ? "Please wait…" : twoFactorStep ? "Verify" : isLogin ? "Sign in" : "Create account"}
+            <button
+              type="submit"
+              className="thread-auth-submit"
+              disabled={loading || (turnstileEnabled && !turnstileToken && !twoFactorStep)}
+            >
+              {submitButtonLabel(loading, Boolean(twoFactorStep), isLogin)}
             </button>
           </form>
 
           {!twoFactorStep && (
-            <button
-              type="button"
-              className="thread-auth-footer"
-              onClick={() => onModeChange?.(isLogin ? "sign-up" : "sign-in")}
-            >
-              {isLogin ? (
-                <>
-                  Don&apos;t have an account? <span>Sign up →</span>
-                </>
-              ) : (
-                <>
-                  Already have an account? <span>Log in →</span>
-                </>
-              )}
-            </button>
+            <AuthModeToggleFooter
+              isLogin={isLogin}
+              onToggleAction={() => onModeChangeAction?.(isLogin ? "sign-up" : "sign-in")}
+            />
           )}
         </>
       )}

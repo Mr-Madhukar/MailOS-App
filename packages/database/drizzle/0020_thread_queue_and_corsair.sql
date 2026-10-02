@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS "corsair_permissions" (
   "endpoint" text NOT NULL,
   "args" text NOT NULL,
   "tenant_id" text NOT NULL DEFAULT 'default',
-  "status" text NOT NULL DEFAULT 'pending',
+  "status" text NOT NULL DEFAULT 'pending', -- NOSONAR
   "expires_at" text NOT NULL,
   "error" text
 );

@@ -73,9 +73,11 @@ export const mcpRouter = Router();
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
+type JsonRpcId = string | number | null;
+
 interface JsonRpcRequest {
   jsonrpc: "2.0";
-  id?: string | number | null;
+  id?: JsonRpcId;
   method: string;
   params?: unknown;
 }
@@ -792,11 +794,11 @@ const MCP_SERVER_VERSION = "2.5.0";
 // JSON-RPC helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function ok(id: unknown, result: unknown) {
+function ok(id: JsonRpcId, result: unknown) {
   return { jsonrpc: "2.0", id, result };
 }
 
-function rpcError(id: unknown, code: number, message: string) {
+function rpcError(id: JsonRpcId, code: number, message: string) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
@@ -810,55 +812,185 @@ function toolResult(content: unknown) {
 // Tool executor
 // ────────────────────────────────────────────────────────────────────────────
 
-async function callTool(
+async function handleQueueEmailTool(args: Record<string, unknown>, userId: string, queue: ReturnType<typeof getQueueService>) {
+  let validated: { to: string; subject: string; body: string };
+  try {
+    validated = validateAgentEmailArgs(args);
+  } catch (err) {
+    return toolResult({
+      success: false,
+      error: err instanceof Error ? err.message : "Invalid email parameters",
+    });
+  }
+  const injection = detectInjectionAttempt(`${validated.subject}\n${validated.body}`);
+  if (injection.flagged) {
+    return toolResult({ success: false, error: injection.reason });
+  }
+  const mode = args.mode === "draft" ? "draft" : "send";
+  if (mode === "send") {
+    const cap = await checkDistributedRateLimit(
+      `mcp:email_send:${userId}`,
+      DEFAULT_AGENT_SEND_CAP,
+      60_000,
+    );
+    if (!cap.allowed) {
+      return toolResult({
+        success: false,
+        error: `MCP send limit reached (max ${DEFAULT_AGENT_SEND_CAP} send emails per minute). Use draft mode or wait.`,
+      });
+    }
+  }
+  const threadId = typeof args.threadId === "string" ? args.threadId : undefined;
+  const item = await queue.enqueueEmail(
+    userId,
+    {
+      mode,
+      email: { ...validated, threadId },
+      title: mode === "draft" ? `Draft: ${validated.subject}` : `Send: ${validated.subject}`,
+      preview: validated.body.slice(0, 240),
+    },
+    { origin: "agent" },
+  );
+  return toolResult({ success: true, queueItemId: item.id, status: item.status });
+}
+
+async function handleQueueCalendarInviteTool(args: Record<string, unknown>, userId: string, queue: ReturnType<typeof getQueueService>) {
+  const summary = String(args.summary ?? "").trim();
+  const startDateTime = String(args.startDateTime ?? "").trim();
+  const endDateTime = String(args.endDateTime ?? "").trim();
+  if (!summary || !startDateTime || !endDateTime) {
+    return toolResult({ success: false, error: "summary, startDateTime, and endDateTime are required" });
+  }
+  const item = await queue.enqueueCalendarInvite(
+    userId,
+    {
+      calendar: {
+        summary,
+        startDateTime,
+        endDateTime,
+        description: typeof args.description === "string" ? args.description : undefined,
+        location: typeof args.location === "string" ? args.location : undefined,
+        timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined,
+        attendeeEmails: Array.isArray(args.attendeeEmails)
+          ? args.attendeeEmails.map(String)
+          : undefined,
+        recurrence: Array.isArray(args.recurrence)
+          ? args.recurrence.map(String).slice(0, 5)
+          : undefined,
+      },
+      title: `Invite: ${summary}`,
+      preview: `${startDateTime} → ${endDateTime}`,
+    },
+    { origin: "agent" },
+  );
+  return toolResult({ success: true, queueItemId: item.id, status: item.status });
+}
+
+async function handleRescheduleEventTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
+  const eventId = String(args.eventId ?? "").trim();
+  const startDateTime = String(args.startDateTime ?? "").trim();
+  const endDateTime = String(args.endDateTime ?? "").trim();
+  const timeZone = String(args.timeZone ?? "UTC").trim();
+  if (!eventId || !startDateTime || !endDateTime) {
+    return toolResult({ success: false, error: "eventId, startDateTime, and endDateTime are required" });
+  }
+  const existing = await calendar.getEvent(userId, eventId);
+  if (!existing) return toolResult({ success: false, error: "Event not found" });
+  const item = await queue.enqueueCalendarArchive(
+    userId,
+    {
+      archive: {
+        eventId,
+        summary: existing.summary ?? "Event",
+        startDateTime,
+        endDateTime,
+        timeZone,
+        htmlLink: existing.htmlLink,
+        recurringEventId: existing.recurringEventId,
+      },
+      title: `Reschedule: ${existing.summary ?? "Event"}`,
+    },
+    { origin: "agent" },
+  );
+  return toolResult({
+    success: true,
+    queued: true,
+    queueItemId: item.id,
+    status: item.status,
+    message: "Reschedule queued — approve via approve_queue_item or /queue",
+  });
+}
+
+async function handleCancelEventTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
+  const eventId = String(args.eventId ?? "").trim();
+  if (!eventId) return toolResult({ success: false, error: "eventId is required" });
+  const existing = await calendar.getEvent(userId, eventId);
+  const item = await queue.enqueueCalendarDelete(
+    userId,
+    {
+      delete: {
+        eventId,
+        summary: existing?.summary ?? "Event",
+        htmlLink: existing?.htmlLink,
+        recurringEventId: existing?.recurringEventId,
+        cancelWithNotify: true,
+      },
+      title: `Cancel: ${existing?.summary ?? eventId}`,
+    },
+    { origin: "agent" },
+  );
+  return toolResult({
+    success: true,
+    queued: true,
+    queueItemId: item.id,
+    status: item.status,
+    message: "Cancellation queued — approve via approve_queue_item or /queue",
+  });
+}
+
+async function handleUpdateEventDetailsTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
+  const eventId = String(args.eventId ?? "").trim();
+  if (!eventId) return toolResult({ success: false, error: "eventId is required" });
+  const newSummary = args.summary ? String(args.summary).trim() : undefined;
+  const description = args.description ? String(args.description) : undefined;
+  const location = args.location ? String(args.location) : undefined;
+  if (!newSummary && !description && !location) {
+    return toolResult({ success: false, error: "At least one of summary, description, or location is required" });
+  }
+  const existing = await calendar.getEvent(userId, eventId);
+  if (!existing) return toolResult({ success: false, error: "Event not found" });
+  const item = await queue.enqueueCalendarUpdate(
+    userId,
+    {
+      update: {
+        eventId,
+        summary: existing.summary ?? "Event",
+        newSummary,
+        description,
+        location,
+        htmlLink: existing.htmlLink,
+      },
+      title: `Update: ${existing.summary ?? "Event"}`,
+    },
+    { origin: "agent" },
+  );
+  return toolResult({
+    success: true,
+    queued: true,
+    queueItemId: item.id,
+    status: item.status,
+    message: "Event update queued — approve via approve_queue_item or /queue",
+  });
+}
+
+async function handleQueueTools(
   name: string,
   args: Record<string, unknown>,
   userId: string,
-): Promise<{ content: Array<{ type: string; text: string }> }> {
-  const inbox = getInboxService();
-  const queue = getQueueService();
-  const calendar = getCalendarService();
-
-  incrementCounter(`mcp.tool.${name}`);
-
+  queue: ReturnType<typeof getQueueService>,
+  calendar: ReturnType<typeof getCalendarService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
   switch (name) {
-    case "list_inbox": {
-      const maxResults = Math.min(Number(args.maxResults ?? 20), 50);
-      const query = typeof args.query === "string" ? args.query : undefined;
-      const result = await inbox.listThreads(userId, { maxResults, query });
-      const summary = result.threads.map((t) => ({
-        id: t.id,
-        subject: t.subject ?? "(no subject)",
-        from: t.fromName ?? t.from ?? "Unknown",
-        snippet: t.snippet?.slice(0, 120),
-        unread: t.unread,
-        date: t.date,
-      }));
-      return toolResult(summary);
-    }
-
-    case "search_inbox": {
-      const query = String(args.query ?? "");
-      const maxResults = Math.min(Number(args.maxResults ?? 10), 50);
-      const result = await inbox.listThreads(userId, { maxResults, query });
-      const summary = result.threads.map((t) => ({
-        id: t.id,
-        subject: t.subject ?? "(no subject)",
-        from: t.fromName ?? t.from ?? "Unknown",
-        snippet: t.snippet?.slice(0, 120),
-        unread: t.unread,
-        date: t.date,
-      }));
-      return toolResult(summary);
-    }
-
-    case "get_thread": {
-      const threadId = String(args.threadId ?? "");
-      const thread = await inbox.getThread(userId, threadId);
-      if (!thread) return toolResult({ error: "Thread not found" });
-      return toolResult(thread);
-    }
-
     case "list_queue": {
       const status = (args.status as string | undefined) ?? "pending";
       const limit = Math.min(Number(args.limit ?? 10), 50);
@@ -877,255 +1009,98 @@ async function callTool(
         })),
       );
     }
-
     case "approve_queue_item": {
       const itemId = String(args.itemId ?? "");
       const result = await queue.approve(userId, itemId);
       return toolResult({ ok: true, itemId, status: result.status });
     }
-
     case "dismiss_queue_item": {
       const itemId = String(args.itemId ?? "");
       await queue.dismiss(userId, itemId);
       return toolResult({ ok: true, itemId });
     }
-
-    case "get_gmail_connection_status": {
-      const status = await inbox.getConnectionStatus(userId);
-      return toolResult(status);
+    case "queue_email":
+      return handleQueueEmailTool(args, userId, queue);
+    case "queue_calendar_invite":
+      return handleQueueCalendarInviteTool(args, userId, queue);
+    case "reschedule_event":
+      return handleRescheduleEventTool(args, userId, calendar, queue);
+    case "cancel_event":
+      return handleCancelEventTool(args, userId, calendar, queue);
+    case "update_event_details":
+      return handleUpdateEventDetailsTool(args, userId, calendar, queue);
+    case "quick_add_event": {
+      const text = String(args.text ?? "");
+      if (!text.trim()) return toolResult({ error: "text is required" });
+      const item = await queue.enqueueQuickAddCalendar(userId, { text }, { origin: "agent" });
+      return toolResult({ ok: true, queued: item.status !== "approved", item });
     }
-
-    case "rank_inbox": {
-      const maxResults = Math.min(Number(args.maxResults ?? 20), 30);
-      const query = typeof args.query === "string" ? args.query : undefined;
-      if (!isInboxAiConfigured()) {
-        return toolResult({ error: "OpenAI is not configured. Set OPENAI_API_KEY to enable AI ranking." });
-      }
-      const result = await inbox.listThreads(userId, { maxResults, query });
-      const threads = result.threads.map((t) => ({
-        id: t.id,
-        snippet: t.snippet ?? "",
-        subject: t.subject,
-        from: t.fromName ?? t.from,
-      }));
-      const analysis = await analyzeInboxThreads(threads);
-      const threadMap = new Map(result.threads.map((t) => [t.id, t]));
-      return toolResult({
-        ...analysis,
-        threads: analysis.items.map((item) => {
-          const t = threadMap.get(item.id);
-          return {
-            ...item,
-            subject: t?.subject ?? "(no subject)",
-            from: t?.fromName ?? t?.from ?? "Unknown",
-            snippet: t?.snippet?.slice(0, 100),
-          };
-        }),
-      });
+    case "send_draft": {
+      const draftId = String(args.draftId ?? "");
+      if (!draftId) return toolResult({ error: "draftId is required" });
+      const item = await queue.enqueueDraftSend(userId, { draftId }, { origin: "agent" });
+      return toolResult({ ok: true, queued: item.status !== "approved", item });
     }
+    default:
+      return null;
+  }
+}
 
-    case "list_calendar_events": {
-      const now = new Date();
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const threeMonthsAhead = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-      const timeMin = typeof args.timeMin === "string" ? args.timeMin : monthAgo.toISOString();
-      const timeMax = typeof args.timeMax === "string" ? args.timeMax : threeMonthsAhead.toISOString();
-      const maxResults = Math.min(Number(args.maxResults ?? 20), 50);
-      const query = typeof args.query === "string" ? args.query.trim() : undefined;
-      const result = await calendar.listEvents(userId, {
-        timeMin,
-        timeMax,
-        maxResults,
-        ...(query ? { q: query } : {}),
-      });
-      return toolResult(
-        result.events.map((e) => ({
-          id: e.id,
-          summary: e.summary,
-          start: e.start,
-          end: e.end,
-          location: e.location,
-          attendees: e.attendees?.length ?? 0,
-          htmlLink: e.htmlLink,
-        })),
-      );
-    }
+async function handleListCalendarEventsTool(
+  args: Record<string, unknown>,
+  userId: string,
+  calendar: ReturnType<typeof getCalendarService>,
+) {
+  const now = new Date();
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const threeMonthsAhead = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const timeMin = typeof args.timeMin === "string" ? args.timeMin : monthAgo.toISOString();
+  const timeMax = typeof args.timeMax === "string" ? args.timeMax : threeMonthsAhead.toISOString();
+  const maxResults = Math.min(Number(args.maxResults ?? 20), 50);
+  const query = typeof args.query === "string" ? args.query.trim() : undefined;
+  const result = await calendar.listEvents(userId, {
+    timeMin,
+    timeMax,
+    maxResults,
+    ...(query ? { q: query } : {}),
+  });
+  return toolResult(
+    result.events.map((e) => ({
+      id: e.id,
+      summary: e.summary,
+      start: e.start,
+      end: e.end,
+      location: e.location,
+      attendees: e.attendees?.length ?? 0,
+      htmlLink: e.htmlLink,
+    })),
+  );
+}
 
-    case "queue_email": {
-      let validated: { to: string; subject: string; body: string };
-      try {
-        validated = validateAgentEmailArgs(args);
-      } catch (err) {
-        return toolResult({
-          success: false,
-          error: err instanceof Error ? err.message : "Invalid email parameters",
-        });
-      }
-      const injection = detectInjectionAttempt(`${validated.subject}\n${validated.body}`);
-      if (injection.flagged) {
-        return toolResult({ success: false, error: injection.reason });
-      }
-      const mode = args.mode === "draft" ? "draft" : "send";
-      if (mode === "send") {
-        const cap = await checkDistributedRateLimit(
-          `mcp:email_send:${userId}`,
-          DEFAULT_AGENT_SEND_CAP,
-          60_000,
-        );
-        if (!cap.allowed) {
-          return toolResult({
-            success: false,
-            error: `MCP send limit reached (max ${DEFAULT_AGENT_SEND_CAP} send emails per minute). Use draft mode or wait.`,
-          });
-        }
-      }
-      const threadId = typeof args.threadId === "string" ? args.threadId : undefined;
-      const item = await queue.enqueueEmail(
-        userId,
-        {
-          mode,
-          email: { ...validated, threadId },
-          title: mode === "draft" ? `Draft: ${validated.subject}` : `Send: ${validated.subject}`,
-          preview: validated.body.slice(0, 240),
-        },
-        { origin: "agent" },
-      );
-      return toolResult({ success: true, queueItemId: item.id, status: item.status });
-    }
+async function handleRespondToEventTool(
+  args: Record<string, unknown>,
+  userId: string,
+  calendar: ReturnType<typeof getCalendarService>,
+) {
+  const eventId = String(args.eventId ?? "").trim();
+  const responseRaw = String(args.response ?? "").trim().toLowerCase();
+  const response = responseRaw as "accepted" | "declined" | "tentative";
+  if (!eventId || !["accepted", "declined", "tentative"].includes(response)) {
+    return toolResult({ success: false, error: "eventId and response (accepted/declined/tentative) are required" });
+  }
+  const updated = await calendar.respondToEvent(userId, eventId, response);
+  return toolResult({ success: true, eventId, response, event: updated });
+}
 
-    case "queue_calendar_invite": {
-      const summary = String(args.summary ?? "").trim();
-      const startDateTime = String(args.startDateTime ?? "").trim();
-      const endDateTime = String(args.endDateTime ?? "").trim();
-      if (!summary || !startDateTime || !endDateTime) {
-        return toolResult({ success: false, error: "summary, startDateTime, and endDateTime are required" });
-      }
-      const item = await queue.enqueueCalendarInvite(
-        userId,
-        {
-          calendar: {
-            summary,
-            startDateTime,
-            endDateTime,
-            description: typeof args.description === "string" ? args.description : undefined,
-            location: typeof args.location === "string" ? args.location : undefined,
-            timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined,
-            attendeeEmails: Array.isArray(args.attendeeEmails)
-              ? args.attendeeEmails.map(String)
-              : undefined,
-            recurrence: Array.isArray(args.recurrence)
-              ? args.recurrence.map(String).slice(0, 5)
-              : undefined,
-          },
-          title: `Invite: ${summary}`,
-          preview: `${startDateTime} → ${endDateTime}`,
-        },
-        { origin: "agent" },
-      );
-      return toolResult({ success: true, queueItemId: item.id, status: item.status });
-    }
-
-    case "list_labels": {
-      const labels = await inbox.listLabels(userId);
-      return toolResult(labels);
-    }
-
-    case "archive_thread": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.archiveThread(userId, threadId);
-      return toolResult({ success: true, threadId });
-    }
-
-    case "star_thread": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.starThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "starred" });
-    }
-
-    case "unstar_thread": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.unstarThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "unstarred" });
-    }
-
-    case "mark_important": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.markImportant(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_important" });
-    }
-
-    case "get_daily_brief": {
-      const timeZone = typeof args.timeZone === "string" ? args.timeZone : "UTC";
-      const brief = await generateDailyBrief({ tenantId: userId, timeZone });
-      return toolResult(brief);
-    }
-
-    case "get_smart_replies": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      const result = await getSmartReplies({ tenantId: userId, threadId });
-      return toolResult(result);
-    }
-
-    case "apply_label": {
-      const threadId = String(args.threadId ?? "").trim();
-      const labelId = String(args.labelId ?? "").trim();
-      if (!threadId || !labelId) {
-        return toolResult({ success: false, error: "threadId and labelId are required" });
-      }
-      await inbox.applyLabel(userId, threadId, labelId);
-      return toolResult({ success: true, threadId, labelId });
-    }
-
-    case "remove_label": {
-      const threadId = String(args.threadId ?? "").trim();
-      const labelId = String(args.labelId ?? "").trim();
-      if (!threadId || !labelId) {
-        return toolResult({ success: false, error: "threadId and labelId are required" });
-      }
-      await inbox.removeLabel(userId, threadId, labelId);
-      return toolResult({ success: true, threadId, labelId });
-    }
-
-    case "trash_thread": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.trashThread(userId, threadId);
-      return toolResult({ success: true, threadId, action: "trashed" });
-    }
-
-    case "delete_draft": {
-      const draftId = String(args.draftId ?? "").trim();
-      if (!draftId) return toolResult({ success: false, error: "draftId is required" });
-      await inbox.deleteDraft(userId, draftId);
-      return toolResult({ success: true, draftId, action: "deleted" });
-    }
-
-    case "get_meeting_prep": {
-      const eventId = String(args.eventId ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
-      if (!eventId) return toolResult({ success: false, error: "eventId is required" });
-      const prep = await getMeetingPrep({ tenantId: userId, eventId, timeZone });
-      return toolResult(prep);
-    }
-
-    case "get_thread_context": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      const ctx = await getThreadContext({ tenantId: userId, threadId });
-      return toolResult(ctx);
-    }
-
-    case "get_missed_followups": {
-      const timeZone = String(args.timeZone ?? "UTC").trim();
-      const followups = await getMissedFollowUps({ tenantId: userId, timeZone });
-      return toolResult({ followups, count: followups.length });
-    }
-
+async function handleCalendarTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  calendar: ReturnType<typeof getCalendarService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  switch (name) {
+    case "list_calendar_events":
+      return handleListCalendarEventsTool(args, userId, calendar);
     case "check_free_busy": {
       const startDateTime = String(args.startDateTime ?? "").trim();
       const endDateTime = String(args.endDateTime ?? "").trim();
@@ -1133,91 +1108,179 @@ async function callTool(
       if (!startDateTime || !endDateTime) {
         return toolResult({ success: false, error: "startDateTime and endDateTime are required" });
       }
-      const calendar = getCalendarService();
-      const result = await calendar.checkFreeBusy(userId, { startDateTime, endDateTime, timeZone });
-      return toolResult(result);
+      return toolResult(await calendar.checkFreeBusy(userId, { startDateTime, endDateTime, timeZone }));
     }
-
-    case "respond_to_event": {
-      const eventId = String(args.eventId ?? "").trim();
-      const responseRaw = String(args.response ?? "").trim().toLowerCase();
-      const response = responseRaw as "accepted" | "declined" | "tentative";
-      if (!eventId || !["accepted", "declined", "tentative"].includes(response)) {
-        return toolResult({ success: false, error: "eventId and response (accepted/declined/tentative) are required" });
-      }
-      const calendar = getCalendarService();
-      const updated = await calendar.respondToEvent(userId, eventId, response);
-      return toolResult({ success: true, eventId, response, event: updated });
-    }
-
-    case "reschedule_event": {
-      const eventId = String(args.eventId ?? "").trim();
-      const startDateTime = String(args.startDateTime ?? "").trim();
-      const endDateTime = String(args.endDateTime ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
-      if (!eventId || !startDateTime || !endDateTime) {
-        return toolResult({ success: false, error: "eventId, startDateTime, and endDateTime are required" });
-      }
-      const existing = await calendar.getEvent(userId, eventId);
-      if (!existing) return toolResult({ success: false, error: "Event not found" });
-      const item = await queue.enqueueCalendarArchive(
-        userId,
-        {
-          archive: {
-            eventId,
-            summary: existing.summary ?? "Event",
-            startDateTime,
-            endDateTime,
-            timeZone,
-            htmlLink: existing.htmlLink,
-            recurringEventId: existing.recurringEventId,
-          },
-          title: `Reschedule: ${existing.summary ?? "Event"}`,
-        },
-        { origin: "agent" },
-      );
-      return toolResult({
-        success: true,
-        queued: true,
-        queueItemId: item.id,
-        status: item.status,
-        message: "Reschedule queued — approve via approve_queue_item or /queue",
-      });
-    }
-
-    case "cancel_event": {
+    case "respond_to_event":
+      return handleRespondToEventTool(args, userId, calendar);
+    case "get_calendar_event": {
       const eventId = String(args.eventId ?? "").trim();
       if (!eventId) return toolResult({ success: false, error: "eventId is required" });
-      const existing = await calendar.getEvent(userId, eventId);
-      const item = await queue.enqueueCalendarDelete(
-        userId,
-        {
-          delete: {
-            eventId,
-            summary: existing?.summary ?? "Event",
-            htmlLink: existing?.htmlLink,
-            recurringEventId: existing?.recurringEventId,
-            cancelWithNotify: true,
-          },
-          title: `Cancel: ${existing?.summary ?? eventId}`,
-        },
-        { origin: "agent" },
-      );
-      return toolResult({
-        success: true,
-        queued: true,
-        queueItemId: item.id,
-        status: item.status,
-        message: "Cancellation queued — approve via approve_queue_item or /queue",
-      });
+      const event = await calendar.getEvent(userId, eventId);
+      if (!event) return toolResult({ success: false, error: "Event not found or calendar not connected" });
+      return toolResult(event);
     }
+    case "get_calendar_connection_status":
+      return toolResult(await calendar.getConnectionStatus(userId));
+    default:
+      return null;
+  }
+}
 
+async function handleRankInboxTool(args: Record<string, unknown>, userId: string, inbox: ReturnType<typeof getInboxService>) {
+  const maxResults = Math.min(Number(args.maxResults ?? 20), 30);
+  const query = typeof args.query === "string" ? args.query : undefined;
+  if (!isInboxAiConfigured()) {
+    return toolResult({ error: "OpenAI is not configured. Set OPENAI_API_KEY to enable AI ranking." });
+  }
+  const result = await inbox.listThreads(userId, { maxResults, query });
+  const threads = result.threads.map((t) => ({
+    id: t.id,
+    snippet: t.snippet ?? "",
+    subject: t.subject,
+    from: t.fromName ?? t.from,
+  }));
+  const analysis = await analyzeInboxThreads(threads);
+  const threadMap = new Map(result.threads.map((t) => [t.id, t]));
+  return toolResult({
+    ...analysis,
+    threads: analysis.items.map((item) => {
+      const t = threadMap.get(item.id);
+      return {
+        ...item,
+        subject: t?.subject ?? "(no subject)",
+        from: t?.fromName ?? t?.from ?? "Unknown",
+        snippet: t?.snippet?.slice(0, 100),
+      };
+    }),
+  });
+}
+
+async function handleFindMeetingSlotsTool(args: Record<string, unknown>, userId: string) {
+  const { findMeetingSlots } = await import("@repo/services/ai/meeting-slots");
+  const result = await findMeetingSlots({
+    tenantId: userId,
+    durationMinutes: Math.max(15, Math.min(480, Number(args.durationMinutes ?? 30))),
+    preferredStartDate: args.preferredStartDate ? String(args.preferredStartDate) : undefined,
+    preferredEndDate: args.preferredEndDate ? String(args.preferredEndDate) : undefined,
+    timeZone: args.timeZone ? String(args.timeZone) : undefined,
+    attendeeEmail: args.attendeeEmail ? String(args.attendeeEmail) : undefined,
+    context: args.context ? String(args.context) : undefined,
+  });
+  return toolResult(result);
+}
+
+async function handleContactIntelTool(args: Record<string, unknown>, userId: string) {
+  const email = String(args.email ?? "").trim();
+  const contactName = args.name ? String(args.name).trim() : undefined;
+  if (!email) return toolResult({ success: false, error: "email is required" });
+  const intel = await getContactIntel({ tenantId: userId, email, name: contactName });
+  return toolResult(intel);
+}
+
+async function handleAiTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  switch (name) {
+    case "rank_inbox":
+      return handleRankInboxTool(args, userId, inbox);
+    case "get_daily_brief": {
+      const timeZone = typeof args.timeZone === "string" ? args.timeZone : "UTC";
+      return toolResult(await generateDailyBrief({ tenantId: userId, timeZone }));
+    }
+    case "get_smart_replies": {
+      const threadId = String(args.threadId ?? "").trim();
+      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
+      return toolResult(await getSmartReplies({ tenantId: userId, threadId }));
+    }
+    case "get_meeting_prep": {
+      const eventId = String(args.eventId ?? "").trim();
+      const timeZone = String(args.timeZone ?? "UTC").trim();
+      if (!eventId) return toolResult({ success: false, error: "eventId is required" });
+      return toolResult(await getMeetingPrep({ tenantId: userId, eventId, timeZone }));
+    }
+    case "get_thread_context": {
+      const threadId = String(args.threadId ?? "").trim();
+      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
+      return toolResult(await getThreadContext({ tenantId: userId, threadId }));
+    }
+    case "get_missed_followups": {
+      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const followups = await getMissedFollowUps({ tenantId: userId, timeZone });
+      return toolResult({ followups, count: followups.length });
+    }
+    case "get_contact_intel":
+      return handleContactIntelTool(args, userId);
+    case "summarize_thread": {
+      const threadId = String(args.threadId ?? "").trim();
+      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
+      return toolResult(await summarizeThread({ tenantId: userId, threadId }));
+    }
+    case "find_meeting_slots":
+      return handleFindMeetingSlotsTool(args, userId);
+    default:
+      return null;
+  }
+}
+
+async function handleCreateDraftTool(
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+) {
+  const to = String(args.to ?? "").trim();
+  const subject = String(args.subject ?? "").trim();
+  const body = String(args.body ?? "").trim();
+  if (!to || !subject || !body) return toolResult({ success: false, error: "to, subject, and body are required" });
+  const draft = await inbox.createDraft(userId, {
+    to,
+    subject,
+    body,
+    threadId: args.threadId ? String(args.threadId) : undefined,
+    cc: args.cc ? String(args.cc) : undefined,
+    bcc: args.bcc ? String(args.bcc) : undefined,
+  });
+  return toolResult({ success: true, draftId: draft.id, subject, to });
+}
+
+async function handleUpdateDraftTool(
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+) {
+  const draftId = String(args.draftId ?? "");
+  const to = String(args.to ?? "");
+  const subject = String(args.subject ?? "");
+  const body = String(args.body ?? "");
+  if (!draftId || !to || !subject) return toolResult({ error: "draftId, to, and subject are required" });
+  const result = await inbox.updateDraft(userId, draftId, {
+    to, subject, body,
+    threadId: typeof args.threadId === "string" ? args.threadId : undefined,
+    cc: typeof args.cc === "string" ? args.cc : undefined,
+    bcc: typeof args.bcc === "string" ? args.bcc : undefined,
+  });
+  return toolResult({ ok: true, ...result });
+}
+
+async function handleDraftTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  switch (name) {
+    case "delete_draft": {
+      const draftId = String(args.draftId ?? "").trim();
+      if (!draftId) return toolResult({ success: false, error: "draftId is required" });
+      await inbox.deleteDraft(userId, draftId);
+      return toolResult({ success: true, draftId, action: "deleted" });
+    }
     case "list_drafts": {
       const maxResults = Math.min(25, Math.max(1, Number(args.maxResults ?? 10)));
-      const result = await inbox.listDrafts(userId, { maxResults });
-      return toolResult(result);
+      return toolResult(await inbox.listDrafts(userId, { maxResults }));
     }
-
     case "get_draft": {
       const draftId = String(args.draftId ?? "").trim();
       if (!draftId) return toolResult({ success: false, error: "draftId is required" });
@@ -1225,177 +1288,103 @@ async function callTool(
       if (!draft) return toolResult({ success: false, error: "Draft not found" });
       return toolResult(draft);
     }
+    case "create_draft_email":
+      return handleCreateDraftTool(args, userId, inbox);
+    case "update_draft":
+      return handleUpdateDraftTool(args, userId, inbox);
+    default:
+      return null;
+  }
+}
 
-    case "mark_thread_read": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.markThreadRead(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_read" });
-    }
+function parseDbSearchPagination(args: Record<string, unknown>) {
+  return {
+    query: typeof args.query === "string" ? args.query : undefined,
+    limit: args.limit != null ? Number(args.limit) : undefined,
+    offset: args.offset != null ? Number(args.offset) : undefined,
+  };
+}
 
-    case "get_contact_intel": {
-      const email = String(args.email ?? "").trim();
-      const name = args.name ? String(args.name).trim() : undefined;
-      if (!email) return toolResult({ success: false, error: "email is required" });
-      const intel = await getContactIntel({ tenantId: userId, email, name });
-      return toolResult(intel);
-    }
+async function handleDbSearchTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+  calendar: ReturnType<typeof getCalendarService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  const pagination = parseDbSearchPagination(args);
+  switch (name) {
+    case "search_threads_db":
+      return toolResult(await inbox.searchThreadsDb(userId, pagination));
+    case "search_messages_db":
+      return toolResult(await inbox.searchMessagesDb(userId, {
+        ...pagination,
+        from: typeof args.from === "string" ? args.from : undefined,
+      }));
+    case "search_events_db":
+      return toolResult(await calendar.searchEventsDb(userId, pagination));
+    case "search_calendars_db":
+      return toolResult(await calendar.searchCalendarsDb(userId, pagination));
+    case "search_drafts_db":
+      return toolResult(await inbox.searchDraftsDb(userId, { limit: pagination.limit, offset: pagination.offset }));
+    case "search_labels_db":
+      return toolResult(await inbox.searchLabelsDb(userId, {
+        limit: pagination.limit,
+        offset: pagination.offset,
+        name: typeof args.name === "string" ? args.name : undefined,
+      }));
+    default:
+      return null;
+  }
+}
 
-    case "summarize_thread": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      const summary = await summarizeThread({ tenantId: userId, threadId });
-      return toolResult(summary);
-    }
-
-    // ── 5 new tools (39 total) ────────────────────────────────────────────────
-
-    case "mark_not_important": {
-      const threadId = String(args.threadId ?? "").trim();
-      if (!threadId) return toolResult({ success: false, error: "threadId is required" });
-      await inbox.markNotImportant(userId, threadId);
-      return toolResult({ success: true, threadId, action: "marked_not_important" });
-    }
-
-    case "get_calendar_event": {
-      const eventId = String(args.eventId ?? "").trim();
-      if (!eventId) return toolResult({ success: false, error: "eventId is required" });
-      const calendar = getCalendarService();
-      const event = await calendar.getEvent(userId, eventId);
-      if (!event) return toolResult({ success: false, error: "Event not found or calendar not connected" });
-      return toolResult(event);
-    }
-
-    case "find_meeting_slots": {
-      const { findMeetingSlots } = await import("@repo/services/ai/meeting-slots");
-      const result = await findMeetingSlots({
-        tenantId: userId,
-        durationMinutes: Math.max(15, Math.min(480, Number(args.durationMinutes ?? 30))),
-        preferredStartDate: args.preferredStartDate ? String(args.preferredStartDate) : undefined,
-        preferredEndDate: args.preferredEndDate ? String(args.preferredEndDate) : undefined,
-        timeZone: args.timeZone ? String(args.timeZone) : undefined,
-        attendeeEmail: args.attendeeEmail ? String(args.attendeeEmail) : undefined,
-        context: args.context ? String(args.context) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "create_draft_email": {
-      const to = String(args.to ?? "").trim();
-      const subject = String(args.subject ?? "").trim();
-      const body = String(args.body ?? "").trim();
-      if (!to || !subject || !body) return toolResult({ success: false, error: "to, subject, and body are required" });
-      const draft = await inbox.createDraft(userId, {
-        to,
-        subject,
-        body,
-        threadId: args.threadId ? String(args.threadId) : undefined,
-        cc: args.cc ? String(args.cc) : undefined,
-        bcc: args.bcc ? String(args.bcc) : undefined,
-      });
-      return toolResult({ success: true, draftId: draft.id, subject, to });
-    }
-
-    case "update_event_details": {
-      const eventId = String(args.eventId ?? "").trim();
-      if (!eventId) return toolResult({ success: false, error: "eventId is required" });
-      const newSummary = args.summary ? String(args.summary).trim() : undefined;
-      const description = args.description ? String(args.description) : undefined;
-      const location = args.location ? String(args.location) : undefined;
-      if (!newSummary && !description && !location) {
-        return toolResult({ success: false, error: "At least one of summary, description, or location is required" });
-      }
-      const existing = await calendar.getEvent(userId, eventId);
-      if (!existing) return toolResult({ success: false, error: "Event not found" });
-      const item = await queue.enqueueCalendarUpdate(
-        userId,
-        {
-          update: {
-            eventId,
-            summary: existing.summary ?? "Event",
-            newSummary,
-            description,
-            location,
-            htmlLink: existing.htmlLink,
-          },
-          title: `Update: ${existing.summary ?? "Event"}`,
-        },
-        { origin: "agent" },
+async function handleEmailQueryTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  switch (name) {
+    case "list_inbox": {
+      const maxResults = Math.min(Number(args.maxResults ?? 20), 50);
+      const query = typeof args.query === "string" ? args.query : undefined;
+      const result = await inbox.listThreads(userId, { maxResults, query });
+      return toolResult(
+        result.threads.map((t) => ({
+          id: t.id,
+          subject: t.subject ?? "(no subject)",
+          from: t.fromName ?? t.from ?? "Unknown",
+          snippet: t.snippet?.slice(0, 120),
+          unread: t.unread,
+          date: t.date,
+        })),
       );
-      return toolResult({
-        success: true,
-        queued: true,
-        queueItemId: item.id,
-        status: item.status,
-        message: "Event update queued — approve via approve_queue_item or /queue",
-      });
     }
-
-    case "get_calendar_connection_status": {
-      const status = await calendar.getConnectionStatus(userId);
-      return toolResult(status);
+    case "search_inbox": {
+      const query = String(args.query ?? "");
+      const maxResults = Math.min(Number(args.maxResults ?? 10), 50);
+      const result = await inbox.listThreads(userId, { maxResults, query });
+      return toolResult(
+        result.threads.map((t) => ({
+          id: t.id,
+          subject: t.subject ?? "(no subject)",
+          from: t.fromName ?? t.from ?? "Unknown",
+          snippet: t.snippet?.slice(0, 120),
+          unread: t.unread,
+          date: t.date,
+        })),
+      );
     }
-
-    case "mark_thread_unread": {
+    case "get_thread": {
       const threadId = String(args.threadId ?? "");
-      await inbox.markThreadUnread(userId, threadId);
-      return toolResult({ ok: true, threadId });
+      const thread = await inbox.getThread(userId, threadId);
+      if (!thread) return toolResult({ error: "Thread not found" });
+      return toolResult(thread);
     }
-
-    case "quick_add_event": {
-      const text = String(args.text ?? "");
-      if (!text.trim()) return toolResult({ error: "text is required" });
-      const item = await queue.enqueueQuickAddCalendar(userId, { text }, { origin: "agent" });
-      return toolResult({ ok: true, queued: item.status !== "approved", item });
-    }
-
-    case "send_draft": {
-      const draftId = String(args.draftId ?? "");
-      if (!draftId) return toolResult({ error: "draftId is required" });
-      const item = await queue.enqueueDraftSend(userId, { draftId }, { origin: "agent" });
-      return toolResult({ ok: true, queued: item.status !== "approved", item });
-    }
-
-    case "mute_thread": {
-      const threadId = String(args.threadId ?? "");
-      if (!threadId) return toolResult({ error: "threadId is required" });
-      await inbox.muteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, muted: true });
-    }
-
-    case "unmute_thread": {
-      const threadId = String(args.threadId ?? "");
-      if (!threadId) return toolResult({ error: "threadId is required" });
-      await inbox.unmuteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, muted: false });
-    }
-
-    case "update_draft": {
-      const draftId = String(args.draftId ?? "");
-      const to = String(args.to ?? "");
-      const subject = String(args.subject ?? "");
-      const body = String(args.body ?? "");
-      if (!draftId || !to || !subject) return toolResult({ error: "draftId, to, and subject are required" });
-      const result = await inbox.updateDraft(userId, draftId, {
-        to, subject, body,
-        threadId: typeof args.threadId === "string" ? args.threadId : undefined,
-        cc: typeof args.cc === "string" ? args.cc : undefined,
-        bcc: typeof args.bcc === "string" ? args.bcc : undefined,
-      });
-      return toolResult({ ok: true, ...result });
-    }
-
-    case "batch_modify_threads": {
-      const threadIds = Array.isArray(args.threadIds) ? args.threadIds.map(String) : [];
-      if (threadIds.length === 0) return toolResult({ error: "threadIds is required" });
-      const result = await inbox.batchModifyThreads(userId, {
-        threadIds,
-        addLabelIds: Array.isArray(args.addLabelIds) ? args.addLabelIds.map(String) : undefined,
-        removeLabelIds: Array.isArray(args.removeLabelIds) ? args.removeLabelIds.map(String) : undefined,
-      });
-      return toolResult({ ok: true, ...result });
-    }
-
+    case "get_gmail_connection_status":
+      return toolResult(await inbox.getConnectionStatus(userId));
+    case "list_labels":
+      return toolResult(await inbox.listLabels(userId));
     case "list_messages": {
       const result = await inbox.listMessages(userId, {
         maxResults: args.maxResults != null ? Number(args.maxResults) : undefined,
@@ -1404,88 +1393,184 @@ async function callTool(
       });
       return toolResult(result);
     }
+    default:
+      return null;
+  }
+}
 
-    case "modify_message": {
-      const messageId = String(args.messageId ?? "");
-      if (!messageId) return toolResult({ error: "messageId is required" });
-      await inbox.modifyMessage(userId, messageId, {
-        addLabelIds: Array.isArray(args.addLabelIds) ? args.addLabelIds.map(String) : undefined,
-        removeLabelIds: Array.isArray(args.removeLabelIds) ? args.removeLabelIds.map(String) : undefined,
-      });
-      return toolResult({ ok: true, messageId });
-    }
+async function handleThreadStatusTools(
+  name: string,
+  threadId: string,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  const STATUS_ACTIONS = new Set([
+    "archive_thread", "star_thread", "unstar_thread", "mark_important",
+    "mark_not_important", "trash_thread", "untrash_thread", "delete_thread",
+    "mark_thread_read", "mark_thread_unread", "mute_thread", "unmute_thread",
+  ]);
+  if (!STATUS_ACTIONS.has(name)) return null;
+  if (!threadId) return toolResult({ success: false, error: "threadId is required" });
 
-    case "delete_thread": {
-      const threadId = String(args.threadId ?? "");
-      if (!threadId) return toolResult({ error: "threadId is required" });
-      await inbox.deleteThread(userId, threadId);
-      return toolResult({ ok: true, threadId, deleted: true });
-    }
-
-    case "untrash_thread": {
-      const threadId = String(args.threadId ?? "");
-      if (!threadId) return toolResult({ error: "threadId is required" });
+  switch (name) {
+    case "archive_thread":
+      await inbox.archiveThread(userId, threadId);
+      return toolResult({ success: true, threadId });
+    case "star_thread":
+      await inbox.starThread(userId, threadId);
+      return toolResult({ success: true, threadId, action: "starred" });
+    case "unstar_thread":
+      await inbox.unstarThread(userId, threadId);
+      return toolResult({ success: true, threadId, action: "unstarred" });
+    case "mark_important":
+      await inbox.markImportant(userId, threadId);
+      return toolResult({ success: true, threadId, action: "marked_important" });
+    case "mark_not_important":
+      await inbox.markNotImportant(userId, threadId);
+      return toolResult({ success: true, threadId, action: "marked_not_important" });
+    case "trash_thread":
+      await inbox.trashThread(userId, threadId);
+      return toolResult({ success: true, threadId, action: "trashed" });
+    case "untrash_thread":
       await inbox.untrashThread(userId, threadId);
       return toolResult({ ok: true, threadId, untrashed: true });
-    }
-
-    case "search_threads_db": {
-      const result = await inbox.searchThreadsDb(userId, {
-        query: typeof args.query === "string" ? args.query : undefined,
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "search_messages_db": {
-      const result = await inbox.searchMessagesDb(userId, {
-        query: typeof args.query === "string" ? args.query : undefined,
-        from: typeof args.from === "string" ? args.from : undefined,
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "search_events_db": {
-      const result = await calendar.searchEventsDb(userId, {
-        query: typeof args.query === "string" ? args.query : undefined,
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "search_calendars_db": {
-      const result = await calendar.searchCalendarsDb(userId, {
-        query: typeof args.query === "string" ? args.query : undefined,
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "search_drafts_db": {
-      const result = await inbox.searchDraftsDb(userId, {
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
-    case "search_labels_db": {
-      const result = await inbox.searchLabelsDb(userId, {
-        name: typeof args.name === "string" ? args.name : undefined,
-        limit: args.limit != null ? Number(args.limit) : undefined,
-        offset: args.offset != null ? Number(args.offset) : undefined,
-      });
-      return toolResult(result);
-    }
-
+    case "delete_thread":
+      await inbox.deleteThread(userId, threadId);
+      return toolResult({ ok: true, threadId, deleted: true });
+    case "mark_thread_read":
+      await inbox.markThreadRead(userId, threadId);
+      return toolResult({ success: true, threadId, action: "marked_read" });
+    case "mark_thread_unread":
+      await inbox.markThreadUnread(userId, threadId);
+      return toolResult({ ok: true, threadId });
+    case "mute_thread":
+      await inbox.muteThread(userId, threadId);
+      return toolResult({ ok: true, threadId, muted: true });
+    case "unmute_thread":
+      await inbox.unmuteThread(userId, threadId);
+      return toolResult({ ok: true, threadId, muted: false });
     default:
-      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
+      return null;
   }
+}
+
+function parseOptionalStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.map(String) : undefined;
+}
+
+async function handleSingleLabelTool(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  if (name !== "apply_label" && name !== "remove_label") return null;
+  const threadId = String(args.threadId ?? "").trim();
+  const labelId = String(args.labelId ?? "").trim();
+  if (!threadId || !labelId) return toolResult({ success: false, error: "threadId and labelId are required" });
+  if (name === "apply_label") {
+    await inbox.applyLabel(userId, threadId, labelId);
+  } else {
+    await inbox.removeLabel(userId, threadId, labelId);
+  }
+  return toolResult({ success: true, threadId, labelId });
+}
+
+async function handleBatchModifyThreadsTool(
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+) {
+  const threadIds = parseOptionalStringArray(args.threadIds) ?? [];
+  if (threadIds.length === 0) return toolResult({ error: "threadIds is required" });
+  const result = await inbox.batchModifyThreads(userId, {
+    threadIds,
+    addLabelIds: parseOptionalStringArray(args.addLabelIds),
+    removeLabelIds: parseOptionalStringArray(args.removeLabelIds),
+  });
+  return toolResult({ ok: true, ...result });
+}
+
+async function handleModifyMessageTool(
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+) {
+  const messageId = String(args.messageId ?? "");
+  if (!messageId) return toolResult({ error: "messageId is required" });
+  await inbox.modifyMessage(userId, messageId, {
+    addLabelIds: parseOptionalStringArray(args.addLabelIds),
+    removeLabelIds: parseOptionalStringArray(args.removeLabelIds),
+  });
+  return toolResult({ ok: true, messageId });
+}
+
+async function handleEmailLabelTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  const singleResult = await handleSingleLabelTool(name, args, userId, inbox);
+  if (singleResult) return singleResult;
+  if (name === "batch_modify_threads") return handleBatchModifyThreadsTool(args, userId, inbox);
+  if (name === "modify_message") return handleModifyMessageTool(args, userId, inbox);
+  return null;
+}
+
+async function handleEmailMutationTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  const threadId = String(args.threadId ?? "").trim();
+  const statusResult = await handleThreadStatusTools(name, threadId, userId, inbox);
+  if (statusResult) return statusResult;
+  return handleEmailLabelTools(name, args, userId, inbox);
+}
+
+async function handleEmailTools(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  const queryResult = await handleEmailQueryTools(name, args, userId, inbox);
+  if (queryResult) return queryResult;
+  return handleEmailMutationTools(name, args, userId, inbox);
+}
+
+async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+  userId: string,
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  const inbox = getInboxService();
+  const queue = getQueueService();
+  const calendar = getCalendarService();
+
+  incrementCounter(`mcp.tool.${name}`);
+
+  const queueResult = await handleQueueTools(name, args, userId, queue, calendar);
+  if (queueResult) return queueResult;
+
+  const calResult = await handleCalendarTools(name, args, userId, calendar);
+  if (calResult) return calResult;
+
+  const aiResult = await handleAiTools(name, args, userId, inbox);
+  if (aiResult) return aiResult;
+
+  const draftResult = await handleDraftTools(name, args, userId, inbox);
+  if (draftResult) return draftResult;
+
+  const dbResult = await handleDbSearchTools(name, args, userId, inbox, calendar);
+  if (dbResult) return dbResult;
+
+  const emailResult = await handleEmailTools(name, args, userId, inbox);
+  if (emailResult) return emailResult;
+
+  throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1508,6 +1593,174 @@ mcpRouter.get("/", (_req: Request, res: Response) => {
   });
 });
 
+function handleMcpDiscovery(method: string, id: JsonRpcId, res: Response): Response {
+  if (method === "initialize") {
+    return res.json(
+      ok(id, {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {}, resources: {}, prompts: {} },
+        serverInfo: { name: "thread-mcp", version: MCP_SERVER_VERSION },
+      }),
+    );
+  }
+
+  if (method === "tools/list") {
+    return res.json(ok(id, { tools: MCP_TOOLS }));
+  }
+
+  if (method === "resources/list") {
+    return res.json(ok(id, {
+      resources: [
+        {
+          uri: "thread://inbox",
+          name: "Gmail Inbox",
+          description: "Current Gmail inbox threads fetched via Corsair SDK. Use list_inbox or search_inbox tools to read.",
+          mimeType: "application/json",
+        },
+        {
+          uri: "thread://queue",
+          name: "Approval Queue",
+          description: "Pending AI-composed emails and calendar invites awaiting user approval. Use list_queue tool to read.",
+          mimeType: "application/json",
+        },
+        {
+          uri: "thread://brief",
+          name: "Daily Brief",
+          description: "AI-generated daily productivity brief (Corsair Gmail + Calendar + OpenAI). Use get_daily_brief tool to read.",
+          mimeType: "application/json",
+        },
+        {
+          uri: "thread://calendar",
+          name: "Google Calendar",
+          description: "Upcoming calendar events fetched via Corsair Calendar SDK. Use list_calendar_events or check_free_busy tools.",
+          mimeType: "application/json",
+        },
+      ],
+    }));
+  }
+
+  if (method === "prompts/list") {
+    return res.json(ok(id, {
+      prompts: [
+        {
+          name: "daily_brief",
+          description: "Generate a personalised daily brief from Gmail + Calendar via Corsair",
+          arguments: [{ name: "timeZone", description: "IANA timezone (e.g. Asia/Kolkata)", required: false }],
+        },
+        {
+          name: "meeting_prep",
+          description: "Prepare talking points, agenda, and risks for an upcoming calendar event",
+          arguments: [
+            { name: "eventId", description: "Google Calendar event id", required: true },
+            { name: "timeZone", description: "IANA timezone", required: false },
+          ],
+        },
+        {
+          name: "smart_reply",
+          description: "Generate 3 AI smart-reply suggestions for a Gmail thread via Corsair",
+          arguments: [{ name: "threadId", description: "Gmail thread id", required: true }],
+        },
+        {
+          name: "contact_intel",
+          description: "Get relationship intelligence for a contact: history, response rate, recommended next action",
+          arguments: [
+            { name: "email", description: "Contact email address", required: true },
+            { name: "name", description: "Contact display name", required: false },
+          ],
+        },
+        {
+          name: "missed_followups",
+          description: "Find calendar meetings from the past 2 weeks that had no follow-up email sent",
+          arguments: [{ name: "timeZone", description: "IANA timezone", required: false }],
+        },
+      ],
+    }));
+  }
+
+  return res.json(ok(id, {}));
+}
+
+function handleMcpPromptsGet(body: JsonRpcRequest, id: JsonRpcId, res: Response): Response {
+  const params = (body.params ?? {}) as Record<string, unknown>;
+  const name = String(params.name ?? "");
+  const args = (params.arguments ?? {}) as Record<string, string>;
+  const contactNameSuffix = args.name ? ` and name="${args.name}"` : "";
+  const promptMap: Record<string, string> = {
+    daily_brief: `Call get_daily_brief with timeZone="${args.timeZone ?? "UTC"}" to generate a personalised daily brief from Gmail and Google Calendar via Corsair SDK.`,
+    meeting_prep: `Call get_meeting_prep with eventId="${args.eventId ?? ""}" and timeZone="${args.timeZone ?? "UTC"}" to prepare talking points, agenda risks, and related emails for this calendar event.`,
+    smart_reply: `Call get_smart_replies with threadId="${args.threadId ?? ""}" to generate 3 context-aware reply suggestions for this Gmail thread.`,
+    contact_intel: `Call get_contact_intel with email="${args.email ?? ""}"${contactNameSuffix} to retrieve relationship intelligence: interaction history, response rate, recent topics, and recommended next action.`,
+    missed_followups: `Call get_missed_followups with timeZone="${args.timeZone ?? "UTC"}" to find calendar meetings from the past 2 weeks that had no follow-up email sent.`,
+  };
+  const text = promptMap[name];
+  if (!text) return res.status(404).json(rpcError(id, -32601, `Prompt not found: ${name}`));
+  return res.json(ok(id, { description: name, messages: [{ role: "user", content: { type: "text", text } }] }));
+}
+
+async function fetchResourceContent(uri: string, userId: string): Promise<unknown> {
+  if (uri === "thread://inbox") {
+    const inbox = getInboxService();
+    return await inbox.listThreads(userId, { maxResults: 20 });
+  }
+  if (uri === "thread://queue") {
+    const queue = getQueueService();
+    const items = await queue.listItems(userId, { status: "pending" });
+    return { items, count: items.length };
+  }
+  if (uri === "thread://brief") {
+    const { generateDailyBrief } = await import("@repo/services/ai/daily-brief");
+    return await generateDailyBrief({ tenantId: userId, timeZone: "UTC" });
+  }
+  if (uri === "thread://calendar") {
+    const calendar = getCalendarService();
+    const now = new Date();
+    const timeMax = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    return await calendar.listEvents(userId, { timeMin: now.toISOString(), timeMax, maxResults: 20 });
+  }
+  return null;
+}
+
+async function handleMcpResourcesRead(req: Request, res: Response, body: JsonRpcRequest, id: JsonRpcId): Promise<Response | void> {
+  const params = (body.params ?? {}) as Record<string, unknown>;
+  const uri = String(params.uri ?? "");
+  const userId = await resolveMcpUserId(req);
+  if (!userId) {
+    return res.status(401).json(rpcError(id, -32001, "Authentication required to read resources"));
+  }
+  const userLimitOk = await applyMcpUserRateLimit(req, res, userId);
+  if (!userLimitOk) return;
+
+  try {
+    const content = await fetchResourceContent(uri, userId);
+    if (!content) {
+      return res.status(404).json(rpcError(id, -32601, `Unknown resource URI: ${uri}`));
+    }
+    return res.json(ok(id, {
+      contents: [{ uri, mimeType: "application/json", text: JSON.stringify(content, null, 2) }],
+    }));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json(rpcError(id, -32603, `Failed to read resource: ${msg}`));
+  }
+}
+
+async function handleMcpToolsCall(req: Request, res: Response, body: JsonRpcRequest, id: JsonRpcId): Promise<Response | void> {
+  const params = (body.params ?? {}) as Record<string, unknown>;
+  const toolName = String(params.name ?? "");
+  const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
+
+  const userId = await resolveMcpUserId(req);
+  if (!userId) {
+    return res.status(401).json(rpcError(id, -32001, "Authentication required"));
+  }
+
+  const userLimitOk = await applyMcpUserRateLimit(req, res, userId);
+  if (!userLimitOk) return;
+
+  const result = await callTool(toolName, toolArgs, userId);
+  return res.json(ok(id, result));
+}
+
 mcpRouter.post("/", async (req: Request, res: Response) => {
   const body = req.body as JsonRpcRequest;
 
@@ -1528,168 +1781,17 @@ mcpRouter.post("/", async (req: Request, res: Response) => {
   }
 
   try {
-    if (method === "initialize") {
-      return res.json(
-        ok(id, {
-          protocolVersion: "2024-11-05",
-          capabilities: { tools: {}, resources: {}, prompts: {} },
-          serverInfo: { name: "thread-mcp", version: MCP_SERVER_VERSION },
-        }),
-      );
+    if (publicMethods.has(method)) {
+      return handleMcpDiscovery(method, id, res);
     }
-
-    if (method === "tools/list") {
-      return res.json(ok(id, { tools: MCP_TOOLS }));
-    }
-
-    // MCP resources — expose static references to key Thread features
-    if (method === "resources/list") {
-      return res.json(ok(id, {
-        resources: [
-          {
-            uri: "thread://inbox",
-            name: "Gmail Inbox",
-            description: "Current Gmail inbox threads fetched via Corsair SDK. Use list_inbox or search_inbox tools to read.",
-            mimeType: "application/json",
-          },
-          {
-            uri: "thread://queue",
-            name: "Approval Queue",
-            description: "Pending AI-composed emails and calendar invites awaiting user approval. Use list_queue tool to read.",
-            mimeType: "application/json",
-          },
-          {
-            uri: "thread://brief",
-            name: "Daily Brief",
-            description: "AI-generated daily productivity brief (Corsair Gmail + Calendar + OpenAI). Use get_daily_brief tool to read.",
-            mimeType: "application/json",
-          },
-          {
-            uri: "thread://calendar",
-            name: "Google Calendar",
-            description: "Upcoming calendar events fetched via Corsair Calendar SDK. Use list_calendar_events or check_free_busy tools.",
-            mimeType: "application/json",
-          },
-        ],
-      }));
-    }
-
-    // MCP prompts — reusable prompt templates for common Thread workflows
-    if (method === "prompts/list") {
-      return res.json(ok(id, {
-        prompts: [
-          {
-            name: "daily_brief",
-            description: "Generate a personalised daily brief from Gmail + Calendar via Corsair",
-            arguments: [{ name: "timeZone", description: "IANA timezone (e.g. Asia/Kolkata)", required: false }],
-          },
-          {
-            name: "meeting_prep",
-            description: "Prepare talking points, agenda, and risks for an upcoming calendar event",
-            arguments: [
-              { name: "eventId", description: "Google Calendar event id", required: true },
-              { name: "timeZone", description: "IANA timezone", required: false },
-            ],
-          },
-          {
-            name: "smart_reply",
-            description: "Generate 3 AI smart-reply suggestions for a Gmail thread via Corsair",
-            arguments: [{ name: "threadId", description: "Gmail thread id", required: true }],
-          },
-          {
-            name: "contact_intel",
-            description: "Get relationship intelligence for a contact: history, response rate, recommended next action",
-            arguments: [
-              { name: "email", description: "Contact email address", required: true },
-              { name: "name", description: "Contact display name", required: false },
-            ],
-          },
-          {
-            name: "missed_followups",
-            description: "Find calendar meetings from the past 2 weeks that had no follow-up email sent",
-            arguments: [{ name: "timeZone", description: "IANA timezone", required: false }],
-          },
-        ],
-      }));
-    }
-
     if (method === "prompts/get") {
-      const params = (body.params ?? {}) as Record<string, unknown>;
-      const name = String(params.name ?? "");
-      const args = (params.arguments ?? {}) as Record<string, string>;
-      const promptMap: Record<string, string> = {
-        daily_brief: `Call get_daily_brief with timeZone="${args.timeZone ?? "UTC"}" to generate a personalised daily brief from Gmail and Google Calendar via Corsair SDK.`,
-        meeting_prep: `Call get_meeting_prep with eventId="${args.eventId ?? ""}" and timeZone="${args.timeZone ?? "UTC"}" to prepare talking points, agenda risks, and related emails for this calendar event.`,
-        smart_reply: `Call get_smart_replies with threadId="${args.threadId ?? ""}" to generate 3 context-aware reply suggestions for this Gmail thread.`,
-        contact_intel: `Call get_contact_intel with email="${args.email ?? ""}"${args.name ? ` and name="${args.name}"` : ""} to retrieve relationship intelligence: interaction history, response rate, recent topics, and recommended next action.`,
-        missed_followups: `Call get_missed_followups with timeZone="${args.timeZone ?? "UTC"}" to find calendar meetings from the past 2 weeks that had no follow-up email sent.`,
-      };
-      const text = promptMap[name];
-      if (!text) return res.status(404).json(rpcError(id, -32601, `Prompt not found: ${name}`));
-      return res.json(ok(id, { description: name, messages: [{ role: "user", content: { type: "text", text } }] }));
+      return handleMcpPromptsGet(body, id, res);
     }
-
-    // MCP resources/read — return live data for static resource URIs
     if (method === "resources/read") {
-      const params = (body.params ?? {}) as Record<string, unknown>;
-      const uri = String(params.uri ?? "");
-      const userId = await resolveMcpUserId(req);
-      if (!userId) {
-        return res.status(401).json(rpcError(id, -32001, "Authentication required to read resources"));
-      }
-      const userLimitOk = await applyMcpUserRateLimit(req, res, userId);
-      if (!userLimitOk) return;
-
-      try {
-        let content: unknown;
-        if (uri === "thread://inbox") {
-          const inbox = getInboxService();
-          const result = await inbox.listThreads(userId, { maxResults: 20 });
-          content = result;
-        } else if (uri === "thread://queue") {
-          const queue = getQueueService();
-          const items = await queue.listItems(userId, { status: "pending" });
-          content = { items, count: items.length };
-        } else if (uri === "thread://brief") {
-          const { generateDailyBrief } = await import("@repo/services/ai/daily-brief");
-          content = await generateDailyBrief({ tenantId: userId, timeZone: "UTC" });
-        } else if (uri === "thread://calendar") {
-          const calendar = getCalendarService();
-          const now = new Date();
-          const timeMax = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          content = await calendar.listEvents(userId, { timeMin: now.toISOString(), timeMax, maxResults: 20 });
-        } else {
-          return res.status(404).json(rpcError(id, -32601, `Unknown resource URI: ${uri}`));
-        }
-        return res.json(ok(id, {
-          contents: [{ uri, mimeType: "application/json", text: JSON.stringify(content, null, 2) }],
-        }));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return res.status(500).json(rpcError(id, -32603, `Failed to read resource: ${msg}`));
-      }
+      return await handleMcpResourcesRead(req, res, body, id);
     }
-
-    // notifications/initialized — acknowledgment per MCP spec
-    if (method === "notifications/initialized") {
-      return res.json(ok(id, {}));
-    }
-
     if (method === "tools/call") {
-      const params = (body.params ?? {}) as Record<string, unknown>;
-      const toolName = String(params.name ?? "");
-      const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
-
-      const userId = await resolveMcpUserId(req);
-      if (!userId) {
-        return res.status(401).json(rpcError(id, -32001, "Authentication required"));
-      }
-
-      const userLimitOk = await applyMcpUserRateLimit(req, res, userId);
-      if (!userLimitOk) return;
-
-      const result = await callTool(toolName, toolArgs, userId);
-      return res.json(ok(id, result));
+      return await handleMcpToolsCall(req, res, body, id);
     }
 
     return res.status(404).json(rpcError(id, -32601, `Method not found: ${method}`));

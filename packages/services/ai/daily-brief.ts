@@ -107,12 +107,10 @@ function sanitizeIds(context: BriefGatherResult, brief: DailyBrief): DailyBrief 
   };
 }
 
-function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
-  const awaiting = context.threads.filter((t) => t.awaitingReply);
-  const prepMeetings = context.meetings.filter((m) => m.needsPrep);
-  const topThread = context.threads[0] ?? awaiting[0];
-  const focusWindow = context.focusWindows[0];
-
+function buildFallbackNeedsAttention(
+  awaiting: BriefGatherResult["threads"],
+  pendingQueue: BriefGatherResult["pendingQueue"]
+): DailyBriefItem[] {
   const needsAttention: DailyBriefItem[] = awaiting.slice(0, 4).map((thread) => ({
     headline: `Reply pending: ${thread.subject}`,
     detail:
@@ -123,7 +121,7 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
     threadId: thread.id,
   }));
 
-  for (const item of context.pendingQueue.slice(0, 2)) {
+  for (const item of pendingQueue.slice(0, 2)) {
     needsAttention.push({
       headline: item.title,
       detail: "Waiting for your approval",
@@ -131,8 +129,11 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
       queueItemId: item.id,
     });
   }
+  return needsAttention;
+}
 
-  const meetingInsights: DailyBriefItem[] = context.meetings.slice(0, 4).map((meeting) => ({
+function buildFallbackMeetingInsights(meetings: BriefGatherResult["meetings"]): DailyBriefItem[] {
+  return meetings.slice(0, 4).map((meeting) => ({
     headline: meeting.summary,
     detail: meeting.needsPrep
       ? "Prep recommended — no agenda in the invite"
@@ -142,14 +143,20 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
     urgency: meeting.needsPrep ? "medium" : "low",
     eventId: meeting.id,
   }));
+}
 
+function buildFallbackRisks(
+  prepMeeting: BriefGatherResult["meetings"][number] | undefined,
+  awaiting: BriefGatherResult["threads"],
+  topWaiting: BriefGatherResult["waitingOn"][number] | undefined
+): DailyBriefItem[] {
   const risks: DailyBriefItem[] = [];
-  if (prepMeetings[0]) {
+  if (prepMeeting) {
     risks.push({
-      headline: `${prepMeetings[0].summary} may need preparation`,
+      headline: `${prepMeeting.summary} may need preparation`,
       detail: "Calendar invite has little or no agenda",
       urgency: "medium",
-      eventId: prepMeetings[0].id,
+      eventId: prepMeeting.id,
     });
   }
   const stale = awaiting.find((t) => (t.daysWaiting ?? 0) >= 3);
@@ -161,8 +168,6 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
       threadId: stale.id,
     });
   }
-
-  const topWaiting = context.waitingOn[0];
   if (topWaiting && topWaiting.sentDaysAgo >= 2) {
     risks.push({
       headline: `No reply from ${topWaiting.to} yet`,
@@ -171,7 +176,14 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
       threadId: topWaiting.id,
     });
   }
+  return risks;
+}
 
+function buildFallbackActions(
+  topThread: BriefGatherResult["threads"][number] | undefined,
+  prepMeeting: BriefGatherResult["meetings"][number] | undefined,
+  firstQueue: BriefGatherResult["pendingQueue"][number] | undefined
+): DailyBriefAction[] {
   const recommendedActions: DailyBriefAction[] = [];
   if (topThread) {
     recommendedActions.push({
@@ -182,46 +194,68 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
       agentPrompt: `Reply to "${topThread.subject}" from ${topThread.from}. Draft a thoughtful response and queue it for my approval.`,
     });
   }
-  if (prepMeetings[0]) {
+  if (prepMeeting) {
     recommendedActions.push({
       id: "prep-meeting",
       label: "Prepare meeting",
       kind: "prepare_meeting",
-      eventId: prepMeetings[0].id,
-      agentPrompt: `Help me prepare for "${prepMeetings[0].summary}" today. Summarize what I should know and suggest talking points.`,
+      eventId: prepMeeting.id,
+      agentPrompt: `Help me prepare for "${prepMeeting.summary}" today. Summarize what I should know and suggest talking points.`,
     });
   }
-  if (context.pendingQueue[0]) {
+  if (firstQueue) {
     recommendedActions.push({
       id: "open-queue",
       label: "Review queue",
       kind: "open_queue",
-      queueItemId: context.pendingQueue[0].id,
+      queueItemId: firstQueue.id,
     });
   }
+  return recommendedActions;
+}
 
+function buildFallbackFocus(
+  topThread: BriefGatherResult["threads"][number] | undefined,
+  prepMeeting: BriefGatherResult["meetings"][number] | undefined,
+  firstQueue: BriefGatherResult["pendingQueue"][number] | undefined
+): DailyBrief["todaysFocus"] {
+  let headline = "Review your inbox and calendar";
+  if (topThread) {
+    headline = `Reply to ${topThread.from}: ${topThread.subject}`;
+  } else if (prepMeeting) {
+    headline = `Prepare for ${prepMeeting.summary}`;
+  } else if (firstQueue) {
+    headline = firstQueue.title;
+  }
+
+  return {
+    headline,
+    detail: topThread?.snippet?.slice(0, 160) || undefined,
+    threadId: topThread?.id,
+    eventId: !topThread ? prepMeeting?.id : undefined,
+  };
+}
+
+function buildFallbackSummary(awaitingCount: number, meetingCount: number): string {
   const summaryParts: string[] = [];
-  if (awaiting.length > 0) summaryParts.push("replies are waiting on you");
-  if (context.meetings.length > 0) summaryParts.push("meetings need your attention");
+  if (awaitingCount > 0) summaryParts.push("replies are waiting on you");
+  if (meetingCount > 0) summaryParts.push("meetings need your attention");
   if (summaryParts.length === 0) summaryParts.push("you have a lighter day ahead");
+  return `Today ${summaryParts.join(" and ")} — start with your highest-impact move.`;
+}
+
+function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
+  const awaiting = context.threads.filter((t) => t.awaitingReply);
+  const prepMeeting = context.meetings.find((m) => m.needsPrep);
+  const topThread = context.threads[0] ?? awaiting[0];
+  const focusWindow = context.focusWindows[0];
 
   return dailyBriefSchema.parse({
     greeting: timeOfDayGreeting(context.userName, context.timeZone),
-    summary: `Today ${summaryParts.join(" and ")} — start with your highest-impact move.`,
-    todaysFocus: {
-      headline: topThread
-        ? `Reply to ${topThread.from}: ${topThread.subject}`
-        : prepMeetings[0]
-          ? `Prepare for ${prepMeetings[0].summary}`
-          : context.pendingQueue[0]
-            ? context.pendingQueue[0].title
-            : "Review your inbox and calendar",
-      detail: topThread?.snippet?.slice(0, 160) || undefined,
-      threadId: topThread?.id,
-      eventId: !topThread ? prepMeetings[0]?.id : undefined,
-    },
-    needsAttention,
-    meetingInsights,
+    summary: buildFallbackSummary(awaiting.length, context.meetings.length),
+    todaysFocus: buildFallbackFocus(topThread, prepMeeting, context.pendingQueue[0]),
+    needsAttention: buildFallbackNeedsAttention(awaiting, context.pendingQueue),
+    meetingInsights: buildFallbackMeetingInsights(context.meetings),
     focusWindow:
       focusWindow != null
         ? {
@@ -230,8 +264,8 @@ function buildFallbackBrief(context: BriefGatherResult): DailyBrief {
             endIso: focusWindow.endIso,
           }
         : undefined,
-    risks,
-    recommendedActions,
+    risks: buildFallbackRisks(prepMeeting, awaiting, context.waitingOn[0]),
+    recommendedActions: buildFallbackActions(topThread, prepMeeting, context.pendingQueue[0]),
     generatedAt: new Date().toISOString(),
     connections: {
       gmail: context.gmailConnected,

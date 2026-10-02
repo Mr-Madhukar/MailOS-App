@@ -7,10 +7,10 @@ import { trpc } from "~/trpc/client";
 import type { AgentFocusState } from "./agent-focus-chip";
 
 type AgentContextPickerProps = {
-  open: boolean;
-  onClose: () => void;
-  onSelect: (focus: AgentFocusState) => void;
-  disabled?: boolean;
+  readonly open: boolean;
+  readonly onCloseAction: () => void;
+  readonly onSelectAction: (focus: AgentFocusState) => void;
+  readonly disabled?: boolean;
 };
 
 type PickerTab = "inbox" | "calendar";
@@ -29,7 +29,113 @@ function calendarPickerBounds() {
   };
 }
 
-export function AgentContextPicker({ open, onClose, onSelect, disabled }: AgentContextPickerProps) {
+type ThreadItem = {
+  id: string;
+  subject?: string;
+  from?: string;
+  fromName?: string;
+};
+
+type CalendarEventItem = {
+  id: string;
+  summary?: string;
+  start?: string;
+};
+
+function ThreadPickerItems({
+  threads,
+  disabled,
+  onSelectAction,
+  onCloseAction,
+}: {
+  readonly threads: readonly ThreadItem[];
+  readonly disabled?: boolean;
+  readonly onSelectAction: (focus: AgentFocusState) => void;
+  readonly onCloseAction: () => void;
+}) {
+  if (threads.length === 0) {
+    return <li className="thread-agent-context-picker-empty">No threads found</li>;
+  }
+  return (
+    <>
+      {threads.map((thread) => (
+        <li key={thread.id}>
+          <button
+            type="button"
+            className="thread-agent-context-picker-item"
+            disabled={disabled}
+            onClick={() => {
+              onSelectAction({
+                threadId: thread.id,
+                threadLabel: thread.subject?.trim() || thread.fromName || thread.from || "Email thread",
+                eventId: undefined,
+                eventLabel: undefined,
+              });
+              onCloseAction();
+            }}
+          >
+            <Mail size={13} />
+            <span className="thread-agent-context-picker-item-main">
+              <strong>{thread.subject?.trim() || "(no subject)"}</strong>
+              <span>{thread.fromName || thread.from || "Unknown sender"}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </>
+  );
+}
+
+function EventPickerItems({
+  events,
+  disabled,
+  onSelectAction,
+  onCloseAction,
+}: {
+  readonly events: readonly CalendarEventItem[];
+  readonly disabled?: boolean;
+  readonly onSelectAction: (focus: AgentFocusState) => void;
+  readonly onCloseAction: () => void;
+}) {
+  if (events.length === 0) {
+    return <li className="thread-agent-context-picker-empty">No events found</li>;
+  }
+  return (
+    <>
+      {events.map((event) => (
+        <li key={event.id}>
+          <button
+            type="button"
+            className="thread-agent-context-picker-item"
+            disabled={disabled}
+            onClick={() => {
+              onSelectAction({
+                eventId: event.id,
+                eventLabel: event.summary?.trim() || "Calendar event",
+                threadId: undefined,
+                threadLabel: undefined,
+              });
+              onCloseAction();
+            }}
+          >
+            <Calendar size={13} />
+            <span className="thread-agent-context-picker-item-main">
+              <strong>{event.summary?.trim() || "(no title)"}</strong>
+              <span>{event.start ? new Date(event.start).toLocaleString() : "No start time"}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </>
+  );
+}
+
+export function AgentContextPicker({
+  open,
+  onCloseAction,
+  onSelectAction,
+  disabled,
+}: AgentContextPickerProps) {
   const [tab, setTab] = useState<PickerTab>("inbox");
   const [query, setQuery] = useState("");
 
@@ -61,7 +167,7 @@ export function AgentContextPicker({ open, onClose, onSelect, disabled }: AgentC
       <div className="thread-agent-context-picker-head">
         <Paperclip size={14} />
         <span>Attach context</span>
-        <button type="button" className="thread-agent-context-picker-close" onClick={onClose}>
+        <button type="button" className="thread-agent-context-picker-close" onClick={onCloseAction}>
           Close
         </button>
       </div>
@@ -101,67 +207,27 @@ export function AgentContextPicker({ open, onClose, onSelect, disabled }: AgentC
       </div>
 
       <ul className="thread-agent-context-picker-list" role="listbox">
-        {loading ? (
+        {loading && (
           <li className="thread-agent-context-picker-empty">
             <Loader2 size={14} className="thread-spin" />
             Loading…
           </li>
-        ) : tab === "inbox" ? (
-          threads.length === 0 ? (
-            <li className="thread-agent-context-picker-empty">No threads found</li>
-          ) : (
-            threads.map((thread) => (
-              <li key={thread.id}>
-                <button
-                  type="button"
-                  className="thread-agent-context-picker-item"
-                  disabled={disabled}
-                  onClick={() => {
-                    onSelect({
-                      threadId: thread.id,
-                      threadLabel: thread.subject?.trim() || thread.fromName || thread.from || "Email thread",
-                      eventId: undefined,
-                      eventLabel: undefined,
-                    });
-                    onClose();
-                  }}
-                >
-                  <Mail size={13} />
-                  <span className="thread-agent-context-picker-item-main">
-                    <strong>{thread.subject?.trim() || "(no subject)"}</strong>
-                    <span>{thread.fromName || thread.from || "Unknown sender"}</span>
-                  </span>
-                </button>
-              </li>
-            ))
-          )
-        ) : events.length === 0 ? (
-          <li className="thread-agent-context-picker-empty">No events found</li>
-        ) : (
-          events.map((event) => (
-            <li key={event.id}>
-              <button
-                type="button"
-                className="thread-agent-context-picker-item"
-                disabled={disabled}
-                onClick={() => {
-                  onSelect({
-                    eventId: event.id,
-                    eventLabel: event.summary?.trim() || "Calendar event",
-                    threadId: undefined,
-                    threadLabel: undefined,
-                  });
-                  onClose();
-                }}
-              >
-                <Calendar size={13} />
-                <span className="thread-agent-context-picker-item-main">
-                  <strong>{event.summary?.trim() || "(no title)"}</strong>
-                  <span>{event.start ? new Date(event.start).toLocaleString() : "No start time"}</span>
-                </span>
-              </button>
-            </li>
-          ))
+        )}
+        {!loading && tab === "inbox" && (
+          <ThreadPickerItems
+            threads={threads}
+            disabled={disabled}
+            onSelectAction={onSelectAction}
+            onCloseAction={onCloseAction}
+          />
+        )}
+        {!loading && tab === "calendar" && (
+          <EventPickerItems
+            events={events}
+            disabled={disabled}
+            onSelectAction={onSelectAction}
+            onCloseAction={onCloseAction}
+          />
         )}
       </ul>
     </div>

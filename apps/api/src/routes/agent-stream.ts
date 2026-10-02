@@ -45,6 +45,89 @@ const agentStreamBodySchema = z.object({
   focusCleared: z.boolean().optional(),
 });
 
+type AgentStreamBody = z.infer<typeof agentStreamBodySchema>;
+
+type EffectiveSessionState = {
+  effectiveHistory: AgentStreamBody["history"];
+  effectiveToolMemory: NonNullable<AgentStreamBody["toolMemory"]>;
+  effectiveFocus: { threadId?: string; eventId?: string };
+  effectiveThreadLabel?: string;
+  effectiveEventLabel?: string;
+};
+
+async function resolveEffectiveSessionState(
+  userId: string,
+  data: AgentStreamBody,
+): Promise<{ state?: EffectiveSessionState; notFound?: boolean }> {
+  let effectiveHistory = data.history;
+  let effectiveToolMemory = data.toolMemory ?? [];
+  let effectiveFocus = {
+    threadId: data.focusThreadId,
+    eventId: data.focusEventId,
+  };
+  let effectiveThreadLabel = data.focusThreadLabel;
+  let effectiveEventLabel = data.focusEventLabel;
+
+  if (data.sessionId) {
+    const session = await getAgentSession(userId, data.sessionId);
+    if (!session) {
+      return { notFound: true };
+    }
+    effectiveHistory = session.messages;
+    effectiveToolMemory = session.toolMemory;
+    if (data.focusCleared) {
+      effectiveFocus = { threadId: undefined, eventId: undefined };
+      effectiveThreadLabel = undefined;
+      effectiveEventLabel = undefined;
+    } else if (data.focusThreadId || data.focusEventId) {
+      effectiveFocus = { threadId: data.focusThreadId, eventId: data.focusEventId };
+    } else {
+      effectiveFocus = {
+        threadId: session.focus.threadId,
+        eventId: session.focus.eventId,
+      };
+      effectiveThreadLabel = session.focus.threadLabel;
+      effectiveEventLabel = session.focus.eventLabel;
+    }
+  }
+
+  return {
+    state: {
+      effectiveHistory,
+      effectiveToolMemory,
+      effectiveFocus,
+      effectiveThreadLabel,
+      effectiveEventLabel,
+    },
+  };
+}
+
+async function persistAgentTurn(
+  userId: string,
+  sessionId: string,
+  message: string,
+  result: Awaited<ReturnType<typeof runAgentChatStream>>,
+  state: EffectiveSessionState,
+): Promise<void> {
+  const updated = await appendAgentSessionTurn(userId, sessionId, {
+    userMessage: message.trim(),
+    assistantReply: result.reply,
+    toolMemory: result.toolMemory ?? state.effectiveToolMemory,
+    focusCleared: result.focusCleared,
+    focus: result.focusCleared
+      ? null
+      : {
+          threadId: state.effectiveFocus.threadId,
+          eventId: state.effectiveFocus.eventId,
+          threadLabel: state.effectiveThreadLabel,
+          eventLabel: state.effectiveEventLabel,
+        },
+  });
+  if (!updated) {
+    logger.warn("agent.stream.session_persist_failed", { userId, sessionId });
+  }
+}
+
 export const agentStreamRouter = Router();
 
 const skipInTests = () => process.env.VITEST === "true";
@@ -70,18 +153,7 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
     });
   }
 
-  const {
-    message,
-    sessionId,
-    history,
-    toolMemory,
-    userEmail,
-    focusThreadId,
-    focusEventId,
-    focusThreadLabel,
-    focusEventLabel,
-    focusCleared,
-  } = parsed.data;
+  const { message, sessionId, userEmail } = parsed.data;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -103,47 +175,21 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
   }
 
   try {
-    let effectiveHistory = history;
-    let effectiveToolMemory = toolMemory ?? [];
-    let effectiveFocus = {
-      threadId: focusThreadId,
-      eventId: focusEventId,
-    };
-    let effectiveThreadLabel = focusThreadLabel;
-    let effectiveEventLabel = focusEventLabel;
-
-    if (sessionId) {
-      const session = await getAgentSession(user.id, sessionId);
-      if (!session) {
-        send("error", { message: "Session not found" });
-        return;
-      }
-      effectiveHistory = session.messages;
-      effectiveToolMemory = session.toolMemory;
-      if (focusCleared) {
-        effectiveFocus = { threadId: undefined, eventId: undefined };
-        effectiveThreadLabel = undefined;
-        effectiveEventLabel = undefined;
-      } else if (focusThreadId || focusEventId) {
-        effectiveFocus = { threadId: focusThreadId, eventId: focusEventId };
-      } else {
-        effectiveFocus = {
-          threadId: session.focus.threadId,
-          eventId: session.focus.eventId,
-        };
-        effectiveThreadLabel = session.focus.threadLabel;
-        effectiveEventLabel = session.focus.eventLabel;
-      }
+    const sessionResolution = await resolveEffectiveSessionState(user.id, parsed.data);
+    if (sessionResolution.notFound || !sessionResolution.state) {
+      send("error", { message: "Session not found" });
+      return;
     }
+    const sessionState = sessionResolution.state;
 
     const result = await runAgentChatStream(
       user.id,
       {
         message: message.trim(),
-        history: effectiveHistory,
-        toolMemory: effectiveToolMemory,
+        history: sessionState.effectiveHistory,
+        toolMemory: sessionState.effectiveToolMemory,
         userEmail,
-        focus: effectiveFocus,
+        focus: sessionState.effectiveFocus,
       },
       (toolName) => {
         send("status", { tool: toolName, label: toolStatusLabel(toolName) });
@@ -154,26 +200,8 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
       { signal: abortController.signal },
     );
 
-    const persistedSessionId = sessionId;
-
     if (sessionId) {
-      const updated = await appendAgentSessionTurn(user.id, sessionId, {
-        userMessage: message.trim(),
-        assistantReply: result.reply,
-        toolMemory: result.toolMemory ?? effectiveToolMemory,
-        focusCleared: result.focusCleared,
-        focus: result.focusCleared
-          ? null
-          : {
-              threadId: effectiveFocus.threadId,
-              eventId: effectiveFocus.eventId,
-              threadLabel: effectiveThreadLabel,
-              eventLabel: effectiveEventLabel,
-            },
-      });
-      if (!updated) {
-        logger.warn("agent.stream.session_persist_failed", { userId: user.id, sessionId });
-      }
+      await persistAgentTurn(user.id, sessionId, message, result, sessionState);
     }
 
     if (result.actions.some((a) => a.kind === "email_queued" || a.kind === "calendar_queued")) {
@@ -183,10 +211,10 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
     send("complete", {
       reply: result.reply,
       actions: result.actions,
-      sessionId: persistedSessionId,
+      sessionId,
       focusCleared: result.focusCleared ?? false,
-      effectiveFocus: result.effectiveFocus ?? effectiveFocus,
-      toolMemory: result.toolMemory ?? effectiveToolMemory,
+      effectiveFocus: result.effectiveFocus ?? sessionState.effectiveFocus,
+      toolMemory: result.toolMemory ?? sessionState.effectiveToolMemory,
     });
   } catch (error) {
     if (abortController.signal.aborted) return;

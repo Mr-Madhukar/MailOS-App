@@ -62,6 +62,92 @@ function postJson(urlStr: string, timeoutMs = 30000): Promise<UpstreamResult> {
   });
 }
 
+function handleDemoUpstreamError(
+  upstreamRes: UpstreamResult,
+  request: NextRequest,
+): NextResponse | null {
+  if (upstreamRes.status >= 200 && upstreamRes.status < 300) {
+    return null;
+  }
+  if (upstreamRes.status >= 500) {
+    return demoErrorRedirect(
+      request,
+      `Demo login unavailable — API 500 error: ${upstreamRes.body ?? "unknown"}`,
+    );
+  }
+  if (upstreamRes.status === 403) {
+    return demoErrorRedirect(
+      request,
+      "Demo login disabled on API. Set DEMO_LOGIN_ENABLED=true on thread-api-smoky and redeploy.",
+    );
+  }
+  return demoErrorRedirect(
+    request,
+    `Demo login failed (HTTP ${upstreamRes.status}). Verify demo account exists on API backend.`,
+  );
+}
+
+function parseSingleCookieHeader(headerStr: string): {
+  name: string;
+  value: string;
+  options: { path: string; httpOnly: boolean; sameSite: "lax"; maxAge?: number };
+} | null {
+  const parts = headerStr.split(";").map((p) => p.trim());
+  const cookiePair = parts[0];
+  if (!cookiePair) return null;
+  const eqIdx = cookiePair.indexOf("=");
+  if (eqIdx === -1) return null;
+  const name = cookiePair.substring(0, eqIdx).trim();
+  const value = cookiePair.substring(eqIdx + 1).trim();
+  if (!name || !value) return null;
+
+  let httpOnly = false;
+  let maxAge: number | undefined;
+
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (!p) continue;
+    if (/^httponly$/i.test(p)) httpOnly = true;
+    if (/^max-age=/i.test(p)) {
+      const parsed = Number.parseInt(p.substring(8).trim(), 10);
+      if (!Number.isNaN(parsed)) maxAge = parsed;
+    }
+  }
+
+  return {
+    name,
+    value,
+    options: {
+      path: "/",
+      httpOnly,
+      sameSite: "lax",
+      ...(maxAge !== undefined ? { maxAge } : {}),
+    },
+  };
+}
+
+function normalizeCookieHeaders(rawSetCookie: string | string[] | undefined): string[] {
+  if (Array.isArray(rawSetCookie)) return rawSetCookie;
+  if (rawSetCookie) return [rawSetCookie];
+  return [];
+}
+
+function applySetCookieHeaders(
+  response: NextResponse,
+  rawSetCookie: string | string[] | undefined,
+): void {
+  const setCookieHeaders = normalizeCookieHeaders(rawSetCookie);
+
+  console.log("[DEMO ROUTE] Parsed setCookieHeaders:", setCookieHeaders);
+
+  for (const headerStr of setCookieHeaders) {
+    const parsed = parseSingleCookieHeader(headerStr);
+    if (parsed) {
+      response.cookies.set(parsed.name, parsed.value, parsed.options);
+    }
+  }
+}
+
 export async function GET(request: NextRequest) {
   if ((process.env.DEMO_LOGIN_ENABLED ?? "true") !== "true") {
     return demoErrorRedirect(request, "Demo login is not enabled.");
@@ -75,23 +161,9 @@ export async function GET(request: NextRequest) {
     const upstreamRes = await postJson(`${apiBase}/trpc/auth.demoSignIn`, 30000);
     console.log("[DEMO ROUTE] upstreamRes status:", upstreamRes.status, "body:", upstreamRes.body);
 
-    if (upstreamRes.status < 200 || upstreamRes.status >= 300) {
-      if (upstreamRes.status >= 500) {
-        return demoErrorRedirect(
-          request,
-          `Demo login unavailable — API 500 error: ${upstreamRes.body ?? "unknown"}`,
-        );
-      }
-      if (upstreamRes.status === 403) {
-        return demoErrorRedirect(
-          request,
-          "Demo login disabled on API. Set DEMO_LOGIN_ENABLED=true on thread-api-smoky and redeploy.",
-        );
-      }
-      return demoErrorRedirect(
-        request,
-        `Demo login failed (HTTP ${upstreamRes.status}). Verify demo account exists on API backend.`,
-      );
+    const errorRedirect = handleDemoUpstreamError(upstreamRes, request);
+    if (errorRedirect) {
+      return errorRedirect;
     }
 
     const html = `<!DOCTYPE html>
@@ -109,46 +181,7 @@ export async function GET(request: NextRequest) {
       headers: { "Content-Type": "text/html" },
     });
 
-    const rawSetCookie = upstreamRes.headers["set-cookie"];
-    const setCookieHeaders = Array.isArray(rawSetCookie)
-      ? rawSetCookie
-      : rawSetCookie
-        ? [rawSetCookie]
-        : [];
-
-    console.log("[DEMO ROUTE] Parsed setCookieHeaders:", setCookieHeaders);
-
-    for (const headerStr of setCookieHeaders) {
-      const parts = headerStr.split(";").map((p) => p.trim());
-      const cookiePair = parts[0];
-      if (!cookiePair) continue;
-      const eqIdx = cookiePair.indexOf("=");
-      if (eqIdx === -1) continue;
-      const name = cookiePair.substring(0, eqIdx).trim();
-      const value = cookiePair.substring(eqIdx + 1).trim();
-
-      let httpOnly = false;
-      let maxAge: number | undefined;
-
-      for (let i = 1; i < parts.length; i++) {
-        const p = parts[i];
-        if (!p) continue;
-        if (/^httponly$/i.test(p)) httpOnly = true;
-        if (/^max-age=/i.test(p)) {
-          const parsed = Number.parseInt(p.substring(8).trim(), 10);
-          if (!Number.isNaN(parsed)) maxAge = parsed;
-        }
-      }
-
-      if (name && value) {
-        response.cookies.set(name, value, {
-          path: "/",
-          httpOnly,
-          sameSite: "lax",
-          ...(maxAge !== undefined ? { maxAge } : {}),
-        });
-      }
-    }
+    applySetCookieHeaders(response, upstreamRes.headers["set-cookie"]);
 
     return response;
   } catch (error) {

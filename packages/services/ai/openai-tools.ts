@@ -27,6 +27,74 @@ export type OpenAiConversationMessage =
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
+function handleFetchChoiceError(error: unknown, signal?: AbortSignal): never {
+  if (error instanceof ServiceError) throw error;
+  if (signal?.aborted) {
+    throw new ServiceError("INTERNAL", "Agent request cancelled.");
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    throw new ServiceError("INTERNAL", "OpenAI request timed out.");
+  }
+  throw new ServiceError("INTERNAL", "OpenAI request failed. Try again shortly.");
+}
+
+async function executeToolCalls(
+  toolCalls: ToolCall[],
+  executeTool: (name: string, args: Record<string, unknown>) => Promise<string>,
+  transcript: OpenAiConversationMessage[],
+): Promise<void> {
+  const toolResults = await Promise.all(
+    toolCalls.map(async (call) => {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+
+      let result: string;
+      try {
+        result = await executeTool(call.function.name, args);
+      } catch (error) {
+        result = JSON.stringify({
+          error: error instanceof Error ? error.message : "Tool execution failed",
+        });
+      }
+
+      return {
+        role: "tool" as const,
+        tool_call_id: call.id,
+        content: result,
+      };
+    }),
+  );
+
+  transcript.push(...toolResults);
+}
+
+async function fetchChoiceWithTimeout(
+  transcript: OpenAiConversationMessage[],
+  tools: OpenAiToolDefinition[],
+  timeoutMs: number,
+  signal?: AbortSignal,
+  onToken?: (delta: string) => void,
+): Promise<{ content?: string | null; tool_calls?: ToolCall[] }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener("abort", onExternalAbort);
+
+  try {
+    return await fetchOpenAiChoice(transcript, tools, controller.signal, onToken);
+  } catch (error) {
+    handleFetchChoiceError(error, signal);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onExternalAbort);
+  }
+}
+
 export async function runOpenAiToolLoop(
   messages: OpenAiConversationMessage[],
   tools: OpenAiToolDefinition[],
@@ -39,7 +107,6 @@ export async function runOpenAiToolLoop(
 
   const maxRounds = opts?.maxRounds ?? MAX_TOOL_ROUNDS;
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const onToken = opts?.onToken;
   const transcript = [...messages];
 
   for (let round = 0; round < maxRounds; round += 1) {
@@ -47,28 +114,7 @@ export async function runOpenAiToolLoop(
       throw new ServiceError("INTERNAL", "Agent request cancelled.");
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const onExternalAbort = () => controller.abort();
-    opts?.signal?.addEventListener("abort", onExternalAbort);
-
-    let choice: { content?: string | null; tool_calls?: ToolCall[] };
-
-    try {
-      choice = await fetchOpenAiChoice(transcript, tools, controller.signal, onToken);
-    } catch (error) {
-      if (error instanceof ServiceError) throw error;
-      if (opts?.signal?.aborted) {
-        throw new ServiceError("INTERNAL", "Agent request cancelled.");
-      }
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new ServiceError("INTERNAL", "OpenAI request timed out.");
-      }
-      throw new ServiceError("INTERNAL", "OpenAI request failed. Try again shortly.");
-    } finally {
-      clearTimeout(timeout);
-      opts?.signal?.removeEventListener("abort", onExternalAbort);
-    }
+    const choice = await fetchChoiceWithTimeout(transcript, tools, timeoutMs, opts?.signal, opts?.onToken);
 
     if (choice.tool_calls?.length) {
       transcript.push({
@@ -77,30 +123,7 @@ export async function runOpenAiToolLoop(
         tool_calls: choice.tool_calls,
       });
 
-      for (const call of choice.tool_calls) {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
-        } catch {
-          args = {};
-        }
-
-        let result: string;
-        try {
-          result = await executeTool(call.function.name, args);
-        } catch (error) {
-          result = JSON.stringify({
-            error: error instanceof Error ? error.message : "Tool execution failed",
-          });
-        }
-
-        transcript.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: result,
-        });
-      }
-
+      await executeToolCalls(choice.tool_calls, executeTool, transcript);
       continue;
     }
 
@@ -117,6 +140,114 @@ export async function runOpenAiToolLoop(
     "INTERNAL",
     "I ran out of steps before completing your request. Try breaking it into smaller tasks.",
   );
+}
+
+type StreamDeltaToolCall = {
+  index: number;
+  id?: string;
+  type?: "function";
+  function?: { name?: string; arguments?: string };
+};
+
+type StreamChunkPayload = {
+  choices?: Array<{
+    delta?: {
+      content?: string;
+      tool_calls?: StreamDeltaToolCall[];
+    };
+  }>;
+};
+
+function updateToolCallMap(toolCalls: Map<number, ToolCall>, deltas: StreamDeltaToolCall[]): void {
+  for (const toolDelta of deltas) {
+    const existing = toolCalls.get(toolDelta.index) ?? {
+      id: toolDelta.id ?? "",
+      type: "function" as const,
+      function: { name: "", arguments: "" },
+    };
+    if (toolDelta.id) existing.id = toolDelta.id;
+    if (toolDelta.function?.name) existing.function.name = toolDelta.function.name;
+    if (toolDelta.function?.arguments) {
+      existing.function.arguments += toolDelta.function.arguments;
+    }
+    toolCalls.set(toolDelta.index, existing);
+  }
+}
+
+function processStreamDataLine(
+  line: string,
+  toolCalls: Map<number, ToolCall>,
+  onToken?: (delta: string) => void,
+): string {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data: ")) return "";
+  const dataStr = trimmed.slice(6);
+  if (dataStr === "[DONE]") return "";
+
+  let parsed: StreamChunkPayload;
+  try {
+    parsed = JSON.parse(dataStr) as StreamChunkPayload;
+  } catch {
+    return "";
+  }
+
+  const delta = parsed.choices?.[0]?.delta;
+  if (!delta) return "";
+
+  if (delta.tool_calls) {
+    updateToolCallMap(toolCalls, delta.tool_calls);
+  }
+
+  if (delta.content) {
+    onToken?.(delta.content);
+    return delta.content;
+  }
+  return "";
+}
+
+async function consumeStreamResponse(
+  body: ReadableStream<Uint8Array>,
+  onToken?: (delta: string) => void,
+): Promise<{ content?: string | null; tool_calls?: ToolCall[] }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  const toolCalls = new Map<number, ToolCall>();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      content += processStreamDataLine(line, toolCalls, onToken);
+    }
+  }
+
+  const tool_calls = toolCalls.size
+    ? Array.from(toolCalls.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([, call]) => call)
+    : undefined;
+
+  return { content: content || null, tool_calls };
+}
+
+async function parseStaticResponse(
+  response: Response,
+): Promise<{ content?: string | null; tool_calls?: ToolCall[] }> {
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
+  };
+  const choice = payload.choices?.[0]?.message;
+  if (!choice) {
+    throw new ServiceError("INTERNAL", "OpenAI returned an empty response.");
+  }
+  return choice;
 }
 
 async function fetchOpenAiChoice(
@@ -167,84 +298,8 @@ async function fetchOpenAiChoice(
   }
 
   if (!useStream || !response.body) {
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
-    };
-    const choice = payload.choices?.[0]?.message;
-    if (!choice) {
-      throw new ServiceError("INTERNAL", "OpenAI returned an empty response.");
-    }
-    return choice;
+    return parseStaticResponse(response);
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let content = "";
-  const toolCalls = new Map<number, ToolCall>();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data: ")) continue;
-      const dataStr = trimmed.slice(6);
-      if (dataStr === "[DONE]") continue;
-
-      let parsed: {
-        choices?: Array<{
-          delta?: {
-            content?: string;
-            tool_calls?: Array<{
-              index: number;
-              id?: string;
-              type?: "function";
-              function?: { name?: string; arguments?: string };
-            }>;
-          };
-        }>;
-      };
-      try {
-        parsed = JSON.parse(dataStr) as typeof parsed;
-      } catch {
-        continue;
-      }
-
-      const delta = parsed.choices?.[0]?.delta;
-      if (!delta) continue;
-
-      if (delta.content) {
-        content += delta.content;
-        onToken?.(delta.content);
-      }
-
-      for (const toolDelta of delta.tool_calls ?? []) {
-        const existing = toolCalls.get(toolDelta.index) ?? {
-          id: toolDelta.id ?? "",
-          type: "function" as const,
-          function: { name: "", arguments: "" },
-        };
-        if (toolDelta.id) existing.id = toolDelta.id;
-        if (toolDelta.function?.name) existing.function.name = toolDelta.function.name;
-        if (toolDelta.function?.arguments) {
-          existing.function.arguments += toolDelta.function.arguments;
-        }
-        toolCalls.set(toolDelta.index, existing);
-      }
-    }
-  }
-
-  const tool_calls = toolCalls.size
-    ? Array.from(toolCalls.entries())
-        .sort(([a], [b]) => a - b)
-        .map(([, call]) => call)
-    : undefined;
-
-  return { content: content || null, tool_calls };
+  return consumeStreamResponse(response.body, onToken);
 }

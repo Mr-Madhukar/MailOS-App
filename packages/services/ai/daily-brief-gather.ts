@@ -135,6 +135,172 @@ function buildMeetingSearchQuery(event: CalendarEvent): string | null {
   return null;
 }
 
+function demoCalendarEvents(): CalendarEvent[] {
+  const base = new Date();
+  base.setSeconds(0, 0);
+  const start = new Date(base);
+  start.setHours(11, 0, 0, 0);
+  const end = new Date(start);
+  end.setHours(12, 0, 0, 0);
+  const focusStart = new Date(base);
+  focusStart.setHours(15, 0, 0, 0);
+  const focusEnd = new Date(focusStart);
+  focusEnd.setHours(16, 0, 0, 0);
+  return [
+    {
+      id: "demo-cal-brief-1",
+      summary: "Corsair Hackathon Demo",
+      start: start.toISOString(),
+      end: end.toISOString(),
+      status: "confirmed",
+      attendees: [{ email: "judge@corsair.dev", displayName: "Judge" }],
+    },
+    {
+      id: "demo-cal-brief-2",
+      summary: "Focus block — deep work",
+      start: focusStart.toISOString(),
+      end: focusEnd.toISOString(),
+      status: "confirmed",
+    },
+  ];
+}
+
+async function fetchBriefEmailLists(
+  inbox: ReturnType<typeof getInboxService>,
+  tenantId: string,
+  gmailConnected: boolean,
+) {
+  const cachedThreadsPromise = gmailConnected
+    ? Promise.resolve({ threads: [] as InboxThread[] })
+    : inbox.listCachedThreads(tenantId, { limit: 30 }).catch(() => ({ threads: [] as InboxThread[] }));
+
+  const unreadPromise = gmailConnected
+    ? inbox
+        .listThreads(tenantId, {
+          maxResults: 20,
+          query:
+            "in:inbox is:unread newer_than:3d -category:promotions -category:social -category:updates -category:forums",
+        })
+        .catch(() => ({ threads: [] as InboxThread[] }))
+    : cachedThreadsPromise.then(({ threads }) => ({
+        threads: threads.filter((t) => t.unread !== false),
+      }));
+
+  const deadlinePromise = gmailConnected
+    ? inbox
+        .listThreads(tenantId, {
+          maxResults: 8,
+          query:
+            'in:inbox is:unread newer_than:7d -category:promotions -category:social (deadline OR "due date" OR "by EOD" OR urgent OR "action required")',
+        })
+        .catch(() => ({ threads: [] as InboxThread[] }))
+    : cachedThreadsPromise.then(({ threads }) => ({
+        threads: threads.filter((t) =>
+          /deadline|due date|by eod|urgent|action required|corsair|hackathon/i.test(
+            `${t.subject ?? ""} ${t.snippet ?? ""}`,
+          ),
+        ),
+      }));
+
+  const invoicePromise = gmailConnected
+    ? inbox
+        .listThreads(tenantId, {
+          maxResults: 5,
+          query:
+            'in:inbox is:unread newer_than:14d -category:promotions (invoice OR unpaid OR "payment due")',
+        })
+        .catch(() => ({ threads: [] as InboxThread[] }))
+    : Promise.resolve({ threads: [] as InboxThread[] });
+
+  const waitingOnPromise = gmailConnected
+    ? inbox
+        .listThreads(tenantId, {
+          maxResults: 8,
+          query: "in:sent newer_than:5d -category:promotions",
+        })
+        .catch(() => ({ threads: [] as InboxThread[] }))
+    : Promise.resolve({ threads: [] as InboxThread[] });
+
+  const [unreadList, deadlineList, invoiceList, waitingOnList] = await Promise.all([
+    unreadPromise,
+    deadlinePromise,
+    invoicePromise,
+    waitingOnPromise,
+  ]);
+
+  return { unreadList, deadlineList, invoiceList, waitingOnList };
+}
+
+async function fetchBriefCalendar(
+  calendar: ReturnType<typeof getCalendarService>,
+  tenantId: string,
+  calendarConnected: boolean,
+  day: { timeMin: string; timeMax: string },
+  timeZone: string,
+) {
+  const eventsPromise = calendarConnected
+    ? calendar
+        .listEvents(tenantId, {
+          timeMin: day.timeMin,
+          timeMax: day.timeMax,
+          maxResults: 25,
+          timeZone,
+        })
+        .catch(() => ({ events: [] as CalendarEvent[] }))
+    : Promise.resolve({ events: demoCalendarEvents() });
+
+  const freeBusyPromise = calendarConnected
+    ? calendar
+        .checkFreeBusy(tenantId, {
+          startDateTime: day.timeMin,
+          endDateTime: day.timeMax,
+          timeZone,
+        })
+        .catch(() => ({ conflicts: [] as CalendarEvent[] }))
+    : Promise.resolve({ conflicts: [] as CalendarEvent[] });
+
+  const [eventsResult, freeBusyResult] = await Promise.all([eventsPromise, freeBusyPromise]);
+  return { eventsResult, freeBusyResult };
+}
+
+async function buildBriefMeetings(
+  todayEvents: CalendarEvent[],
+  tenantId: string,
+  gmailConnected: boolean,
+  inbox: ReturnType<typeof getInboxService>,
+): Promise<BriefMeetingSnapshot[]> {
+  const prepCandidates = todayEvents.filter(meetingNeedsPrep).slice(0, MEETING_PREP_SEARCH_LIMIT);
+
+  const relatedCounts = await Promise.all(
+    prepCandidates.map(async (event) => {
+      const query = buildMeetingSearchQuery(event);
+      if (!query || !gmailConnected) return 0;
+      try {
+        const found = await inbox.listThreads(tenantId, { maxResults: 5, query });
+        return found.threads.length;
+      } catch {
+        return 0;
+      }
+    }),
+  );
+
+  return todayEvents.map((event) => {
+    const prepIndex = prepCandidates.findIndex((c) => c.id === event.id);
+    return {
+      id: event.id,
+      summary: event.summary?.trim() || "Untitled meeting",
+      start: event.start,
+      end: event.end,
+      needsPrep: meetingNeedsPrep(event),
+      relatedEmailCount: prepIndex >= 0 ? relatedCounts[prepIndex] ?? 0 : 0,
+      attendeeNames: (event.attendees ?? [])
+        .map((a) => a.displayName?.trim() || a.email?.split("@")[0] || "")
+        .filter(Boolean)
+        .slice(0, 4),
+    };
+  });
+}
+
 export async function gatherDailyBriefContext(input: {
   tenantId: string;
   userEmail?: string;
@@ -160,119 +326,19 @@ export async function gatherDailyBriefContext(input: {
 
   const day = zonedDayRange(timeZone);
 
-  const cachedThreadsPromise = gmailConnected
-    ? Promise.resolve({ threads: [] as InboxThread[] })
-    : inbox.listCachedThreads(input.tenantId, { limit: 30 }).catch(() => ({ threads: [] as InboxThread[] }));
+  const { unreadList, deadlineList, invoiceList, waitingOnList } = await fetchBriefEmailLists(
+    inbox,
+    input.tenantId,
+    gmailConnected,
+  );
 
-  // Recent unread personal mail only — promotions/social/notifications excluded.
-  const unreadPromise = gmailConnected
-    ? inbox
-        .listThreads(input.tenantId, {
-          maxResults: 20,
-          query:
-            "in:inbox is:unread newer_than:3d -category:promotions -category:social -category:updates -category:forums",
-        })
-        .catch(() => ({ threads: [] as InboxThread[] }))
-    : cachedThreadsPromise.then(({ threads }) => ({
-        threads: threads.filter((t) => t.unread !== false),
-      }));
-
-  const deadlinePromise = gmailConnected
-    ? inbox
-        .listThreads(input.tenantId, {
-          maxResults: 8,
-          query:
-            'in:inbox is:unread newer_than:7d -category:promotions -category:social (deadline OR "due date" OR "by EOD" OR urgent OR "action required")',
-        })
-        .catch(() => ({ threads: [] as InboxThread[] }))
-    : cachedThreadsPromise.then(({ threads }) => ({
-        threads: threads.filter((t) =>
-          /deadline|due date|by eod|urgent|action required|corsair|hackathon/i.test(
-            `${t.subject ?? ""} ${t.snippet ?? ""}`,
-          ),
-        ),
-      }));
-
-  const invoicePromise = gmailConnected
-    ? inbox
-        .listThreads(input.tenantId, {
-          maxResults: 5,
-          query:
-            'in:inbox is:unread newer_than:14d -category:promotions (invoice OR unpaid OR "payment due")',
-        })
-        .catch(() => ({ threads: [] as InboxThread[] }))
-    : Promise.resolve({ threads: [] as InboxThread[] });
-
-  const demoCalendarEvents = (): CalendarEvent[] => {
-    const base = new Date();
-    base.setSeconds(0, 0);
-    const start = new Date(base);
-    start.setHours(11, 0, 0, 0);
-    const end = new Date(start);
-    end.setHours(12, 0, 0, 0);
-    const focusStart = new Date(base);
-    focusStart.setHours(15, 0, 0, 0);
-    const focusEnd = new Date(focusStart);
-    focusEnd.setHours(16, 0, 0, 0);
-    return [
-      {
-        id: "demo-cal-brief-1",
-        summary: "Corsair Hackathon Demo",
-        start: start.toISOString(),
-        end: end.toISOString(),
-        status: "confirmed",
-        attendees: [{ email: "judge@corsair.dev", displayName: "Judge" }],
-      },
-      {
-        id: "demo-cal-brief-2",
-        summary: "Focus block — deep work",
-        start: focusStart.toISOString(),
-        end: focusEnd.toISOString(),
-        status: "confirmed",
-      },
-    ];
-  };
-
-  const eventsPromise = calendarConnected
-    ? calendar
-        .listEvents(input.tenantId, {
-          timeMin: day.timeMin,
-          timeMax: day.timeMax,
-          maxResults: 25,
-          timeZone,
-        })
-        .catch(() => ({ events: [] as CalendarEvent[] }))
-    : Promise.resolve({ events: demoCalendarEvents() });
-
-  const freeBusyPromise = calendarConnected
-    ? calendar
-        .checkFreeBusy(input.tenantId, {
-          startDateTime: day.timeMin,
-          endDateTime: day.timeMax,
-          timeZone,
-        })
-        .catch(() => ({ conflicts: [] as CalendarEvent[] }))
-    : Promise.resolve({ conflicts: [] as CalendarEvent[] });
-
-  // Waiting on others — sent mail with no reply in last 5 days.
-  const waitingOnPromise = gmailConnected
-    ? inbox
-        .listThreads(input.tenantId, {
-          maxResults: 8,
-          query: "in:sent newer_than:5d -category:promotions",
-        })
-        .catch(() => ({ threads: [] as InboxThread[] }))
-    : Promise.resolve({ threads: [] as InboxThread[] });
-
-  const [unreadList, deadlineList, invoiceList, eventsResult, freeBusyResult, waitingOnList] =
-    await Promise.all([
-      unreadPromise,
-      deadlinePromise,
-      invoicePromise,
-      eventsPromise,
-      freeBusyPromise,
-      waitingOnPromise,
-    ]);
+  const { eventsResult, freeBusyResult } = await fetchBriefCalendar(
+    calendar,
+    input.tenantId,
+    calendarConnected,
+    day,
+    timeZone,
+  );
 
   // Unread-only for email signals — read mail (e.g. opened from notification) drops off the brief.
   const merged = dedupeThreads([
@@ -339,36 +405,7 @@ export async function gatherDailyBriefContext(input: {
   }
 
   const todayEvents = (eventsResult.events ?? []).filter((e) => e.status !== "cancelled");
-  const prepCandidates = todayEvents.filter(meetingNeedsPrep).slice(0, MEETING_PREP_SEARCH_LIMIT);
-
-  const relatedCounts = await Promise.all(
-    prepCandidates.map(async (event) => {
-      const query = buildMeetingSearchQuery(event);
-      if (!query || !gmailConnected) return 0;
-      try {
-        const found = await inbox.listThreads(input.tenantId, { maxResults: 5, query });
-        return found.threads.length;
-      } catch {
-        return 0;
-      }
-    }),
-  );
-
-  const meetings: BriefMeetingSnapshot[] = todayEvents.map((event) => {
-    const prepIndex = prepCandidates.findIndex((c) => c.id === event.id);
-    return {
-      id: event.id,
-      summary: event.summary?.trim() || "Untitled meeting",
-      start: event.start,
-      end: event.end,
-      needsPrep: meetingNeedsPrep(event),
-      relatedEmailCount: prepIndex >= 0 ? relatedCounts[prepIndex] ?? 0 : 0,
-      attendeeNames: (event.attendees ?? [])
-        .map((a) => a.displayName?.trim() || a.email?.split("@")[0] || "")
-        .filter(Boolean)
-        .slice(0, 4),
-    };
-  });
+  const meetings = await buildBriefMeetings(todayEvents, input.tenantId, gmailConnected, inbox);
 
   const busySlots = (freeBusyResult.conflicts ?? []).map((slot) => ({
     start: slot.start ?? day.timeMin,
@@ -425,6 +462,82 @@ export async function gatherDailyBriefContext(input: {
   };
 }
 
+function serializeThreadLine(
+  thread: BriefThreadSnapshot,
+  deadlineSet: Set<string>,
+  invoiceSet: Set<string>,
+): string[] {
+  let waiting = "";
+  if (thread.awaitingReply) {
+    waiting = thread.daysWaiting != null ? ` | awaiting reply ${thread.daysWaiting}d` : " | awaiting reply";
+  }
+  const tags: string[] = [];
+  if (deadlineSet.has(thread.id)) tags.push("DEADLINE");
+  if (invoiceSet.has(thread.id)) tags.push("INVOICE");
+  const tagStr = tags.length > 0 ? ` | [${tags.join(",")}]` : "";
+
+  const lines = [`- id=${thread.id} | from=${thread.from} | subject=${thread.subject}${waiting}${tagStr}`];
+  if (thread.snippet) {
+    lines.push(`  snippet: ${fenceEmailData(thread.snippet.slice(0, 180))}`);
+  }
+  return lines;
+}
+
+function serializeThreadsSection(
+  threads: BriefThreadSnapshot[],
+  deadlineIds: string[],
+  invoiceIds: string[],
+): string[] {
+  if (threads.length === 0) return [];
+  const deadlineSet = new Set(deadlineIds);
+  const invoiceSet = new Set(invoiceIds);
+  const lines = ["", "Email threads (most important first):"];
+  for (const thread of threads) {
+    lines.push(...serializeThreadLine(thread, deadlineSet, invoiceSet));
+  }
+
+  const detailIds = new Set(threads.map((t) => t.id));
+  const extraDeadlines = deadlineIds.filter((id) => !detailIds.has(id));
+  const extraInvoices = invoiceIds.filter((id) => !detailIds.has(id));
+  if (extraDeadlines.length > 0) {
+    lines.push("", `Deadline/urgent threads not in detail (IDs only): ${extraDeadlines.join(", ")}`);
+  }
+  if (extraInvoices.length > 0) {
+    lines.push("", `Invoice/payment threads not in detail (IDs only): ${extraInvoices.join(", ")}`);
+  }
+  return lines;
+}
+
+function serializeMeetingsSection(meetings: BriefMeetingSnapshot[]): string[] {
+  if (meetings.length === 0) return [];
+  const lines = ["", "Today's calendar events:"];
+  for (const meeting of meetings) {
+    const prep = meeting.needsPrep ? " | needs prep" : "";
+    const related = meeting.relatedEmailCount > 0 ? ` | ${meeting.relatedEmailCount} related emails` : "";
+    lines.push(`- id=${meeting.id} | ${meeting.summary} | start=${meeting.start ?? "?"}${prep}${related}`);
+    if (meeting.attendeeNames.length > 0) {
+      lines.push(`  attendees: ${meeting.attendeeNames.join(", ")}`);
+    }
+  }
+  return lines;
+}
+
+function serializeConnectionFooter(context: BriefGatherResult): string[] {
+  if (!context.gmailConnected && !context.calendarConnected) {
+    return [
+      "",
+      "Demo workspace — sample mail and calendar data. Suggest connecting Gmail and Calendar for live sync.",
+    ];
+  }
+  if (!context.gmailConnected && context.threads.length > 0) {
+    return ["", "Gmail not connected — using demo inbox cache."];
+  }
+  if (!context.calendarConnected && context.meetings.length > 0) {
+    return ["", "Calendar not connected — using demo calendar preview."];
+  }
+  return [];
+}
+
 export function serializeGatherForModel(context: BriefGatherResult): string {
   const lines: string[] = [
     `User: ${context.userName}`,
@@ -444,53 +557,10 @@ export function serializeGatherForModel(context: BriefGatherResult): string {
     }
   }
 
-  if (context.threads.length > 0) {
-    const deadlineSet = new Set(context.deadlineThreadIds);
-    const invoiceSet = new Set(context.invoiceThreadIds);
-    lines.push("", "Email threads (most important first):");
-    for (const thread of context.threads) {
-      const waiting =
-        thread.awaitingReply && thread.daysWaiting != null
-          ? ` | awaiting reply ${thread.daysWaiting}d`
-          : thread.awaitingReply
-            ? " | awaiting reply"
-            : "";
-      const tags: string[] = [];
-      if (deadlineSet.has(thread.id)) tags.push("DEADLINE");
-      if (invoiceSet.has(thread.id)) tags.push("INVOICE");
-      const tagStr = tags.length > 0 ? ` | [${tags.join(",")}]` : "";
-      lines.push(
-        `- id=${thread.id} | from=${thread.from} | subject=${thread.subject}${waiting}${tagStr}`,
-      );
-      if (thread.snippet) lines.push(`  snippet: ${fenceEmailData(thread.snippet.slice(0, 180))}`);
-    }
-  }
-
-  // Surface deadline/invoice threads that weren't in the top-detail window but are still important.
-  const detailIds = new Set(context.threads.map((t) => t.id));
-  const extraDeadlines = context.deadlineThreadIds.filter((id) => !detailIds.has(id));
-  const extraInvoices = context.invoiceThreadIds.filter((id) => !detailIds.has(id));
-  if (extraDeadlines.length > 0) {
-    lines.push("", `Deadline/urgent threads not in detail (IDs only): ${extraDeadlines.join(", ")}`);
-  }
-  if (extraInvoices.length > 0) {
-    lines.push("", `Invoice/payment threads not in detail (IDs only): ${extraInvoices.join(", ")}`);
-  }
-
-  if (context.meetings.length > 0) {
-    lines.push("", "Today's calendar events:");
-    for (const meeting of context.meetings) {
-      const prep = meeting.needsPrep ? " | needs prep" : "";
-      const related =
-        meeting.relatedEmailCount > 0 ? ` | ${meeting.relatedEmailCount} related emails` : "";
-      lines.push(
-        `- id=${meeting.id} | ${meeting.summary} | start=${meeting.start ?? "?"}${prep}${related}`,
-      );
-      if (meeting.attendeeNames.length > 0) {
-        lines.push(`  attendees: ${meeting.attendeeNames.join(", ")}`);
-      }
-    }
-  }
+  lines.push(
+    ...serializeThreadsSection(context.threads, context.deadlineThreadIds, context.invoiceThreadIds),
+    ...serializeMeetingsSection(context.meetings),
+  );
 
   if (context.waitingOn.length > 0) {
     lines.push("", "Waiting on replies (user sent, no response yet):");
@@ -499,13 +569,7 @@ export function serializeGatherForModel(context: BriefGatherResult): string {
     }
   }
 
-  if (!context.gmailConnected && !context.calendarConnected) {
-    lines.push("", "Demo workspace — sample mail and calendar data. Suggest connecting Gmail and Calendar for live sync.");
-  } else if (!context.gmailConnected && context.threads.length > 0) {
-    lines.push("", "Gmail not connected — using demo inbox cache.");
-  } else if (!context.calendarConnected && context.meetings.length > 0) {
-    lines.push("", "Calendar not connected — using demo calendar preview.");
-  }
+  lines.push(...serializeConnectionFooter(context));
 
   return lines.join("\n");
 }

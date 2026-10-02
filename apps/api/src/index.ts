@@ -2,12 +2,17 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const currentDir =
-  typeof __dirname !== "undefined"
-    ? __dirname
-    : typeof import.meta !== "undefined" && import.meta.url
-      ? path.dirname(fileURLToPath(import.meta.url))
-      : process.cwd();
+function resolveCurrentDir(): string {
+  if (typeof __dirname !== "undefined") {
+    return __dirname;
+  }
+  if (import.meta?.url) {
+    return path.dirname(fileURLToPath(import.meta.url));
+  }
+  return process.cwd();
+}
+
+const currentDir = resolveCurrentDir();
 
 dotenv.config({ path: path.resolve(currentDir, "../../../.env") });
 

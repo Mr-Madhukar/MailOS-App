@@ -41,6 +41,95 @@ function clip(text: string, max = 120): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+function resolveSender(row: Record<string, unknown> | null | undefined): string {
+  if (typeof row?.fromName === "string") {
+    return row.fromName;
+  }
+  if (typeof row?.from === "string") {
+    return row.from;
+  }
+  return "";
+}
+
+function summarizeInboxList(data: Record<string, unknown> | null, query?: string): string {
+  const count = typeof data?.count === "number" ? data.count : undefined;
+  const threads = Array.isArray(data?.threads) ? data.threads : [];
+  const topSubjects = threads
+    .slice(0, 3)
+    .map((t) => {
+      if (!t || typeof t !== "object") return "";
+      const row = t as Record<string, unknown>;
+      const subject = typeof row.subject === "string" ? row.subject.trim() : "";
+      if (!subject) return "";
+      const from = resolveSender(row);
+      const fromSuffix = from ? ` (${from})` : "";
+      return `${subject}${fromSuffix}`;
+    })
+    .filter(Boolean);
+  const subjectSuffix = topSubjects.length > 0 ? `: ${topSubjects.join("; ")}` : "";
+  const totalCount = count ?? threads.length;
+  const summary = query
+    ? `Searched inbox for "${query}" — ${totalCount} thread(s)${subjectSuffix}`
+    : `Listed ${totalCount} recent inbox thread(s)${subjectSuffix}`;
+  return clip(summary);
+}
+
+function summarizeGetThread(data: Record<string, unknown> | null): string {
+  const thread =
+    data?.thread && typeof data.thread === "object" ? (data.thread as Record<string, unknown>) : null;
+  const subject = typeof thread?.subject === "string" ? thread.subject.trim() : "Thread";
+  const from = resolveSender(thread);
+  const fromSuffix = from ? ` from ${from}` : "";
+  return clip(`Read thread "${subject}"${fromSuffix}`);
+}
+
+function summarizeThreadSummary(data: Record<string, unknown> | null): string {
+  const subject = typeof data?.subject === "string" ? data.subject.trim() : "Thread";
+  const next = typeof data?.nextStep === "string" ? data.nextStep.trim() : "";
+  const nextSuffix = next ? ` — next: ${next}` : "";
+  return clip(`Summarized "${subject}"${nextSuffix}`);
+}
+
+function summarizeRankInbox(data: Record<string, unknown> | null): string {
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const top = items
+    .slice(0, 3)
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const row = item as Record<string, unknown>;
+      const subject = typeof row.subject === "string" ? row.subject.trim() : "";
+      if (!subject) return "";
+      const urgency = typeof row.urgency === "string" ? row.urgency : "";
+      return `${subject} [${urgency}]`;
+    })
+    .filter(Boolean);
+  const topSuffix = top.length > 0 ? `: ${top.join("; ")}` : "";
+  return clip(`Ranked inbox urgency${topSuffix}`);
+}
+
+function summarizeCalendarList(data: Record<string, unknown> | null): string {
+  const events = Array.isArray(data?.events) ? data.events : [];
+  const top = events
+    .slice(0, 3)
+    .map((e) => {
+      if (!e || typeof e !== "object") return "";
+      const row = e as Record<string, unknown>;
+      return typeof row.summary === "string" ? row.summary.trim() : "";
+    })
+    .filter(Boolean);
+  const topSuffix = top.length > 0 ? `: ${top.join("; ")}` : "";
+  return clip(`Listed ${events.length} calendar event(s)${topSuffix}`);
+}
+
+function summarizeGetEvent(data: Record<string, unknown> | null): string {
+  const event =
+    data?.event && typeof data.event === "object" ? (data.event as Record<string, unknown>) : null;
+  const title = typeof event?.summary === "string" ? event.summary.trim() : "Event";
+  const start = typeof event?.start === "string" ? event.start : "";
+  const startSuffix = start ? ` at ${start}` : "";
+  return clip(`Read calendar event "${title}"${startSuffix}`);
+}
+
 export function summarizeToolResult(
   toolName: string,
   rawResult: string,
@@ -56,102 +145,23 @@ export function summarizeToolResult(
 
   switch (toolName) {
     case "search_inbox":
-    case "list_inbox": {
-      const count = typeof data?.count === "number" ? data.count : undefined;
-      const threads = Array.isArray(data?.threads) ? data.threads : [];
-      const topSubjects = threads
-        .slice(0, 3)
-        .map((t) => {
-          if (!t || typeof t !== "object") return "";
-          const row = t as Record<string, unknown>;
-          const subject = typeof row.subject === "string" ? row.subject.trim() : "";
-          const from = typeof row.fromName === "string" ? row.fromName : typeof row.from === "string" ? row.from : "";
-          return subject ? `${subject}${from ? ` (${from})` : ""}` : "";
-        })
-        .filter(Boolean);
-      const summary = query
-        ? `Searched inbox for "${query}" — ${count ?? threads.length} thread(s)${topSubjects.length ? `: ${topSubjects.join("; ")}` : ""}`
-        : `Listed ${count ?? threads.length} recent inbox thread(s)${topSubjects.length ? `: ${topSubjects.join("; ")}` : ""}`;
-      return { at, tool: toolName, summary: clip(summary), query };
-    }
+    case "list_inbox":
+      return { at, tool: toolName, summary: summarizeInboxList(data, query), query };
 
-    case "get_thread": {
-      const thread =
-        data?.thread && typeof data.thread === "object" ? (data.thread as Record<string, unknown>) : null;
-      const subject = typeof thread?.subject === "string" ? thread.subject.trim() : "Thread";
-      const from =
-        typeof thread?.fromName === "string"
-          ? thread.fromName
-          : typeof thread?.from === "string"
-            ? thread.from
-            : "";
-      return {
-        at,
-        tool: toolName,
-        summary: clip(`Read thread "${subject}"${from ? ` from ${from}` : ""}`),
-        threadId,
-      };
-    }
+    case "get_thread":
+      return { at, tool: toolName, summary: summarizeGetThread(data), threadId };
 
-    case "summarize_thread": {
-      const subject = typeof data?.subject === "string" ? data.subject.trim() : "Thread";
-      const next = typeof data?.nextStep === "string" ? data.nextStep.trim() : "";
-      return {
-        at,
-        tool: toolName,
-        summary: clip(`Summarized "${subject}"${next ? ` — next: ${next}` : ""}`),
-        threadId,
-      };
-    }
+    case "summarize_thread":
+      return { at, tool: toolName, summary: summarizeThreadSummary(data), threadId };
 
-    case "rank_inbox": {
-      const items = Array.isArray(data?.items) ? data.items : [];
-      const top = items
-        .slice(0, 3)
-        .map((item) => {
-          if (!item || typeof item !== "object") return "";
-          const row = item as Record<string, unknown>;
-          const subject = typeof row.subject === "string" ? row.subject.trim() : "";
-          const urgency = typeof row.urgency === "string" ? row.urgency : "";
-          return subject ? `${subject} [${urgency}]` : "";
-        })
-        .filter(Boolean);
-      return {
-        at,
-        tool: toolName,
-        summary: clip(`Ranked inbox urgency${top.length ? `: ${top.join("; ")}` : ""}`),
-      };
-    }
+    case "rank_inbox":
+      return { at, tool: toolName, summary: summarizeRankInbox(data) };
 
-    case "list_calendar_events": {
-      const events = Array.isArray(data?.events) ? data.events : [];
-      const top = events
-        .slice(0, 3)
-        .map((e) => {
-          if (!e || typeof e !== "object") return "";
-          const row = e as Record<string, unknown>;
-          return typeof row.summary === "string" ? row.summary.trim() : "";
-        })
-        .filter(Boolean);
-      return {
-        at,
-        tool: toolName,
-        summary: clip(`Listed ${events.length} calendar event(s)${top.length ? `: ${top.join("; ")}` : ""}`),
-      };
-    }
+    case "list_calendar_events":
+      return { at, tool: toolName, summary: summarizeCalendarList(data) };
 
-    case "get_calendar_event": {
-      const event =
-        data?.event && typeof data.event === "object" ? (data.event as Record<string, unknown>) : null;
-      const title = typeof event?.summary === "string" ? event.summary.trim() : "Event";
-      const start = typeof event?.start === "string" ? event.start : "";
-      return {
-        at,
-        tool: toolName,
-        summary: clip(`Read calendar event "${title}"${start ? ` at ${start}` : ""}`),
-        eventId,
-      };
-    }
+    case "get_calendar_event":
+      return { at, tool: toolName, summary: summarizeGetEvent(data), eventId };
 
     case "list_queue": {
       const items = Array.isArray(data?.items) ? data.items : [];

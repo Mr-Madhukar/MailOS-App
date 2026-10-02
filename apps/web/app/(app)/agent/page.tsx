@@ -933,8 +933,8 @@ function AgentPageContent() {
                 </div>
                 <AgentContextPicker
                   open={pickerOpen}
-                  onClose={() => setPickerOpen(false)}
-                  onSelect={(next) => void handleAttachFocus(next)}
+                  onCloseAction={() => setPickerOpen(false)}
+                  onSelectAction={(next) => void handleAttachFocus(next)}
                   disabled={isPending}
                 />
                 <AgentMentionInput
