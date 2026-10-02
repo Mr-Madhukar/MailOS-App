@@ -617,9 +617,9 @@ export function enrichThreadOpenApi(
     "post",
     "curl",
     "Sign in (curl)",
-    `curl -X POST '${baseUrl}/api/authentication/sign-in' \\
-  -H 'Content-Type: application/json' \\
-  -d '{"email":"demo@mailos.dev","password":"DemoPass123!","turnstileToken":""}' \\
+    String.raw`curl -X POST '${baseUrl}/api/authentication/sign-in' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@mailos.dev","password":"DemoPass123!","turnstileToken":""}' \
   -c cookies.txt`,
   );
 
@@ -629,7 +629,7 @@ export function enrichThreadOpenApi(
     "get",
     "curl",
     "List threads (cookie auth)",
-    `curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \\
+    String.raw`curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \
   -b cookies.txt`,
   );
 
@@ -639,11 +639,11 @@ export function enrichThreadOpenApi(
     "post",
     "curl",
     "Queue email (with CSRF)",
-    `curl -X POST '${baseUrl}/api/queue/enqueue/email' \\
-  -H 'Content-Type: application/json' \\
-  -H 'X-Thread-CSRF: 1' \\
-  -H 'Origin: ${clientUrl}' \\
-  -b cookies.txt \\
+    String.raw`curl -X POST '${baseUrl}/api/queue/enqueue/email' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Thread-CSRF: 1' \
+  -H 'Origin: ${clientUrl}' \
+  -b cookies.txt \
   -d '{"mode":"send","email":{"to":"a@b.com","subject":"Hi","body":"Hello"},"title":"Test"}'`,
   );
 
@@ -653,8 +653,8 @@ export function enrichThreadOpenApi(
     "post",
     "curl",
     "MCP tools/list",
-    `curl -X POST '${baseUrl}/mcp' \\
-  -H 'Content-Type: application/json' \\
+    String.raw`curl -X POST '${baseUrl}/mcp' \
+  -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
   );
 
@@ -664,9 +664,9 @@ export function enrichThreadOpenApi(
     "post",
     "curl",
     "Corsair list_operations",
-    `curl -X POST '${baseUrl}/mcp/corsair' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer YOUR_MCP_KEY' \\
+    String.raw`curl -X POST '${baseUrl}/mcp/corsair' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_MCP_KEY' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_operations","arguments":{}}}'`,
   );
 
@@ -714,36 +714,6 @@ export function enrichThreadOpenApi(
   enrichQueryParams(document, "/contacts/search", "get", {
     q: { description: "Name or email substring", example: "alex" },
   });
-
-  // Legacy inline param enrichment (kept for compatibility)
-  const listThreads = document.paths?.["/inbox/threads"]?.get;
-  if (listThreads) {
-    listThreads.parameters = listThreads.parameters?.map((parameter) => {
-      if (parameter.name === "maxResults") {
-        return { ...parameter, description: "Page size (1–50)", example: 20 };
-      }
-      if (parameter.name === "query") {
-        return { ...parameter, description: "Gmail search query (same syntax as Gmail)", example: "is:unread" };
-      }
-      if (parameter.name === "pageToken") {
-        return { ...parameter, description: "Gmail pagination token from previous response" };
-      }
-      return parameter;
-    });
-  }
-
-  const listEvents = document.paths?.["/calendar/events"]?.get;
-  if (listEvents) {
-    listEvents.parameters = listEvents.parameters?.map((parameter) => {
-      if (parameter.name === "timeMin") {
-        return { ...parameter, description: "ISO 8601 range start", example: "2026-06-01T00:00:00Z" };
-      }
-      if (parameter.name === "timeMax") {
-        return { ...parameter, description: "ISO 8601 range end", example: "2026-06-30T23:59:59Z" };
-      }
-      return parameter;
-    });
-  }
 
   return document;
 }

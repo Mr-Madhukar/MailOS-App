@@ -402,6 +402,49 @@ Please reply with expected payment date to avoid service interruption.`,
   },
 ];
 
+function emailFixture(
+  kind: "email_send" | "email_draft",
+  title: string,
+  preview: string,
+  to: string,
+  subject: string,
+  body: string,
+  status: "pending" | "approved" | "dismissed" = "pending",
+): DemoQueueFixture {
+  return {
+    kind,
+    title,
+    preview,
+    payload: { to, subject, body },
+    status,
+  };
+}
+
+function calendarFixture(
+  title: string,
+  summary: string,
+  description: string,
+  start: Date | string,
+  end: Date | string,
+  status: "pending" | "approved" | "dismissed" = "pending",
+): DemoQueueFixture {
+  const startIso = typeof start === "string" ? start : start.toISOString();
+  const endIso = typeof end === "string" ? end : end.toISOString();
+  return {
+    kind: "calendar_invite",
+    title,
+    preview: `${startIso} → ${endIso}`,
+    payload: {
+      summary,
+      description,
+      startDateTime: startIso,
+      endDateTime: endIso,
+      timeZone: "UTC",
+    },
+    status,
+  };
+}
+
 export function buildDemoQueueFixtures(): DemoQueueFixture[] {
   const tomorrow = new Date(Date.now() + 86_400_000);
   const dayAfter = new Date(tomorrow.getTime() + 3_600_000);
@@ -409,123 +452,88 @@ export function buildDemoQueueFixtures(): DemoQueueFixture[] {
   judgeSlot.setDate(judgeSlot.getDate() + 1);
   judgeSlot.setHours(11, 0, 0, 0);
   const judgeEnd = new Date(judgeSlot.getTime() + 3_600_000);
+  const sarahOfficeStart = new Date(Date.now() + 2 * 86_400_000 + 15 * 3_600_000);
+  const sarahOfficeEnd = new Date(Date.now() + 2 * 86_400_000 + 16 * 3_600_000);
 
   return [
-    {
-      kind: "email_send",
-      title: "Send: Reply to Sarah — term sheet",
-      preview: "Confirm valuation cap and pro-rata by EOD Friday",
-      payload: {
-        to: "sarah@venture.co",
-        subject: "Re: Series A term sheet — need your input by EOD Friday",
-        body: "Hi Sarah,\n\nThanks for the follow-up. I can confirm the $12M cap and pro-rata terms. Let's schedule 15 minutes tomorrow to finalize the board observer language.\n\nBest,",
-      },
-      status: "pending",
-    },
-    {
-      kind: "calendar_invite",
-      title: "Invite: Judge walkthrough dry run",
-      preview: `${judgeSlot.toISOString()} → ${judgeEnd.toISOString()}`,
-      payload: {
-        summary: "Judge walkthrough dry run",
-        description: "Brief → Agent → Queue → Calendar demo script",
-        startDateTime: judgeSlot.toISOString(),
-        endDateTime: judgeEnd.toISOString(),
-        timeZone: "UTC",
-      },
-      status: "pending",
-    },
-    {
-      kind: "email_draft",
-      title: "Draft: Vendor payment confirmation",
-      preview: "Confirm CloudStack invoice #8842 payment on March 27",
-      payload: {
-        to: "billing@cloudstack.io",
-        subject: "Re: Invoice #8842 — payment due March 28",
-        body: "Hi,\n\nPayment for invoice #8842 is scheduled for March 27. No disputes on line items.\n\nThanks,",
-      },
-      status: "pending",
-    },
-    {
-      kind: "email_send",
-      title: "Send: Customer escalation reply — Meridian Health",
-      preview: "Confirm SLA credits and schedule exec call today",
-      payload: {
-        to: "vp@meridianhealth.com",
-        subject: "Re: URGENT — SLA remediation plan",
-        body: "Hi,\n\nThank you for your patience. We're preparing a written remediation plan and can join a call today at 4pm ET. SLA credits will be confirmed in writing by 5pm ET.\n\nBest,",
-      },
-      status: "pending",
-    },
-    {
-      kind: "email_send",
-      title: "Send: TechCrunch quote — AI inbox launch",
-      preview: "Confirm HITL approval before outbound sends",
-      payload: {
-        to: "press@techcrunch.com",
-        subject: "Re: TechCrunch — comment on AI inbox launch?",
-        body: "Hi Jamie,\n\nHappy to provide a quote. Thread requires human approval in the Queue before any email or calendar action sends via Gmail.\n\nBest,",
-      },
-      status: "pending",
-    },
-    {
-      kind: "email_draft",
-      title: "Draft: Board deck — queue metrics slide",
-      preview: "HITL approval rate and demo conversion stats",
-      payload: {
-        to: "finance@thread.dev",
-        subject: "Re: Board deck due Monday",
-        body: "Uploading queue approval metrics and demo funnel slides to the board folder by Sunday EOD.",
-      },
-      status: "pending",
-    },
-    {
-      kind: "calendar_invite",
-      title: "Invite: Investor office hours (Sarah Chen)",
-      preview: "Thursday 3pm — term sheet + roadmap",
-      payload: {
-        summary: "Investor office hours — Sarah Chen",
-        description: "Term sheet open items and Q3 roadmap",
-        startDateTime: new Date(Date.now() + 2 * 86_400_000 + 15 * 3_600_000).toISOString(),
-        endDateTime: new Date(Date.now() + 2 * 86_400_000 + 16 * 3_600_000).toISOString(),
-        timeZone: "UTC",
-      },
-      status: "pending",
-    },
-    {
-      kind: "email_send",
-      title: "Send: Welcome to Thread demo",
-      preview: "Sample queued email for analytics",
-      payload: {
-        to: "guest@example.com",
-        subject: "Welcome to Thread demo",
-        body: "Hi — this sample queue item shows how approval works before Gmail sends.",
-      },
-      status: "pending",
-    },
-    {
-      kind: "calendar_invite",
-      title: "Invite: Demo sync (approved example)",
-      preview: `${tomorrow.toISOString()} → ${dayAfter.toISOString()}`,
-      payload: {
-        summary: "Demo sync",
-        description: "Previously approved sample item",
-        startDateTime: tomorrow.toISOString(),
-        endDateTime: dayAfter.toISOString(),
-        timeZone: "UTC",
-      },
-      status: "approved",
-    },
-    {
-      kind: "email_draft",
-      title: "Draft: Follow-up note (dismissed example)",
-      preview: "Dismissed sample for analytics",
-      payload: {
-        to: "you@example.com",
-        subject: "Follow-up note",
-        body: "Thanks for trying Thread.",
-      },
-      status: "dismissed",
-    },
+    emailFixture(
+      "email_send",
+      "Send: Reply to Sarah — term sheet",
+      "Confirm valuation cap and pro-rata by EOD Friday",
+      "sarah@venture.co",
+      "Re: Series A term sheet — need your input by EOD Friday",
+      "Hi Sarah,\n\nThanks for the follow-up. I can confirm the $12M cap and pro-rata terms. Let's schedule 15 minutes tomorrow to finalize the board observer language.\n\nBest,",
+    ),
+    calendarFixture(
+      "Invite: Judge walkthrough dry run",
+      "Judge walkthrough dry run",
+      "Brief → Agent → Queue → Calendar demo script",
+      judgeSlot,
+      judgeEnd,
+    ),
+    emailFixture(
+      "email_draft",
+      "Draft: Vendor payment confirmation",
+      "Confirm CloudStack invoice #8842 payment on March 27",
+      "billing@cloudstack.io",
+      "Re: Invoice #8842 — payment due March 28",
+      "Hi,\n\nPayment for invoice #8842 is scheduled for March 27. No disputes on line items.\n\nThanks,",
+    ),
+    emailFixture(
+      "email_send",
+      "Send: Customer escalation reply — Meridian Health",
+      "Confirm SLA credits and schedule exec call today",
+      "vp@meridianhealth.com",
+      "Re: URGENT — SLA remediation plan",
+      "Hi,\n\nThank you for your patience. We're preparing a written remediation plan and can join a call today at 4pm ET. SLA credits will be confirmed in writing by 5pm ET.\n\nBest,",
+    ),
+    emailFixture(
+      "email_send",
+      "Send: TechCrunch quote — AI inbox launch",
+      "Confirm HITL approval before outbound sends",
+      "press@techcrunch.com",
+      "Re: TechCrunch — comment on AI inbox launch?",
+      "Hi Jamie,\n\nHappy to provide a quote. Thread requires human approval in the Queue before any email or calendar action sends via Gmail.\n\nBest,",
+    ),
+    emailFixture(
+      "email_draft",
+      "Draft: Board deck — queue metrics slide",
+      "HITL approval rate and demo conversion stats",
+      "finance@thread.dev",
+      "Re: Board deck due Monday",
+      "Uploading queue approval metrics and demo funnel slides to the board folder by Sunday EOD.",
+    ),
+    calendarFixture(
+      "Invite: Investor office hours (Sarah Chen)",
+      "Investor office hours — Sarah Chen",
+      "Term sheet open items and Q3 roadmap",
+      sarahOfficeStart,
+      sarahOfficeEnd,
+    ),
+    emailFixture(
+      "email_send",
+      "Send: Welcome to Thread demo",
+      "Sample queued email for analytics",
+      "guest@example.com",
+      "Welcome to Thread demo",
+      "Hi — this sample queue item shows how approval works before Gmail sends.",
+    ),
+    calendarFixture(
+      "Invite: Demo sync (approved example)",
+      "Demo sync",
+      "Previously approved sample item",
+      tomorrow,
+      dayAfter,
+      "approved",
+    ),
+    emailFixture(
+      "email_draft",
+      "Draft: Follow-up note (dismissed example)",
+      "Dismissed sample for analytics",
+      "you@example.com",
+      "Follow-up note",
+      "Thanks for trying Thread.",
+      "dismissed",
+    ),
   ];
 }

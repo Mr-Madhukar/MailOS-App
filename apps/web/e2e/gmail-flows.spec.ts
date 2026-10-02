@@ -31,29 +31,15 @@ async function waitForRedirect(page: Page, pattern: RegExp, timeoutMs = 12_000) 
 
 // ─── public surface & auth gate ─────────────────────────────────────────────
 
-test("inbox route redirects unauthenticated users to sign-in", async ({ page }) => {
-  await page.goto("/inbox");
-  await waitForRedirect(page, /sign-in/);
-  expect(page.url()).toContain("/sign-in");
-});
+const PROTECTED_REDIRECT_ROUTES = ["/inbox", "/queue", "/agent", "/settings"] as const;
 
-test("queue route redirects unauthenticated users to sign-in", async ({ page }) => {
-  await page.goto("/queue");
-  await waitForRedirect(page, /sign-in/);
-  expect(page.url()).toContain("/sign-in");
-});
-
-test("agent route redirects unauthenticated users to sign-in", async ({ page }) => {
-  await page.goto("/agent");
-  await waitForRedirect(page, /sign-in/);
-  expect(page.url()).toContain("/sign-in");
-});
-
-test("settings route redirects unauthenticated users to sign-in", async ({ page }) => {
-  await page.goto("/settings");
-  await waitForRedirect(page, /sign-in/);
-  expect(page.url()).toContain("/sign-in");
-});
+for (const route of PROTECTED_REDIRECT_ROUTES) {
+  test(`${route} route redirects unauthenticated users to sign-in`, async ({ page }) => {
+    await page.goto(route);
+    await waitForRedirect(page, /sign-in/);
+    expect(page.url()).toContain("/sign-in");
+  });
+}
 
 // ─── landing page ────────────────────────────────────────────────────────────
 
