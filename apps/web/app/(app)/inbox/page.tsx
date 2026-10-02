@@ -56,6 +56,7 @@ import {
 import type { RouterOutputs } from "@repo/trpc/client";
 import { INBOX_PAGE_SIZE } from "@repo/services/inbox";
 import { trpc } from "~/trpc/client";
+import { useModalBackdrop } from "~/hooks/use-modal-backdrop";
 
 function threadLikelyHasAttachment(thread: { snippet?: string; subject?: string }) {
   const text = `${thread.subject ?? ""} ${thread.snippet ?? ""}`.toLowerCase();
@@ -434,41 +435,6 @@ function handleThreadActionKeys(
   return false;
 }
 
-function useModalBackdrop(
-  isOpen: boolean,
-  onClose: () => void,
-  isBusy = false,
-) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const dialog = dialogRef.current;
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === dialog && !isBusy) {
-        onClose();
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isBusy) {
-        onClose();
-      }
-    };
-
-    dialog?.addEventListener("click", handleClick);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      dialog?.removeEventListener("click", handleClick);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose, isBusy]);
-
-  return dialogRef;
-}
-
 function getSentimentModifier(sentiment: string | undefined): string {
   if (sentiment === "urgent") {
     return "urgent";
@@ -725,6 +691,33 @@ function DraftsList({
   );
 }
 
+function LoadMoreButton({
+  isFetchingMore,
+  onLoadMore,
+  label,
+}: Readonly<{
+  isFetchingMore: boolean;
+  onLoadMore: () => void;
+  label: string;
+}>) {
+  return (
+    <button
+      type="button"
+      className="thread-inbox-loadmore"
+      onClick={onLoadMore}
+      disabled={isFetchingMore}
+    >
+      {isFetchingMore ? (
+        <>
+          <Loader2 size={13} className="thread-spin" /> Loading…
+        </>
+      ) : (
+        label
+      )}
+    </button>
+  );
+}
+
 function InboxListFooter({
   isRefreshing,
   nextPageToken,
@@ -751,20 +744,11 @@ function InboxListFooter({
   if (nextPageToken) {
     return (
       <div className="thread-inbox-list-footer">
-        <button
-          type="button"
-          className="thread-inbox-loadmore"
-          onClick={onLoadMore}
-          disabled={isFetchingMore}
-        >
-          {isFetchingMore ? (
-            <>
-              <Loader2 size={13} className="thread-spin" /> Loading…
-            </>
-          ) : (
-            "Load more mails"
-          )}
-        </button>
+        <LoadMoreButton
+          isFetchingMore={isFetchingMore}
+          onLoadMore={onLoadMore}
+          label="Load more mails"
+        />
       </div>
     );
   }
@@ -789,20 +773,11 @@ function DraftsListFooter({
   return (
     <div className="thread-inbox-list-footer">
       {nextPageToken ? (
-        <button
-          type="button"
-          className="thread-inbox-loadmore"
-          onClick={onLoadMore}
-          disabled={isFetchingMore}
-        >
-          {isFetchingMore ? (
-            <>
-              <Loader2 size={13} className="thread-spin" /> Loading…
-            </>
-          ) : (
-            "Load more drafts"
-          )}
-        </button>
+        <LoadMoreButton
+          isFetchingMore={isFetchingMore}
+          onLoadMore={onLoadMore}
+          label="Load more drafts"
+        />
       ) : (
         <p className="thread-inbox-list-footer-hint">All drafts loaded</p>
       )}
@@ -1725,19 +1700,27 @@ export default function InboxPage() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const removeThreadFromList = (threadId: string) => {
+    utils.inbox.listThreads.setData(
+      { maxResults: PAGE_SIZE, query: appliedQuery || undefined },
+      (old) => {
+        if (!old) {
+          return old;
+        }
+        return {
+          ...old,
+          threads: old.threads.filter((t) => t.id !== threadId),
+        };
+      },
+    );
+    setSelectedId(null);
+  };
+
   const trashThread = trpc.inbox.trashThread.useMutation({
     onSuccess: (_data, variables) => {
       toast.success("Moved to trash");
-      utils.inbox.listThreads.setData(
-        { maxResults: PAGE_SIZE, query: appliedQuery || undefined },
-        (old) => {
-          if (!old) {
-            return old;
-          }
-          return { ...old, threads: old.threads.filter((t) => t.id !== variables.threadId) };
-        }
-      );
-      setSelectedId(null);
+      removeThreadFromList(variables.threadId);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -1746,16 +1729,7 @@ export default function InboxPage() {
     onSuccess: (_data, variables) => {
       toast.success("Thread muted");
       setMutedThreadIds((prev) => new Set(prev).add(variables.threadId));
-      utils.inbox.listThreads.setData(
-        { maxResults: PAGE_SIZE, query: appliedQuery || undefined },
-        (old) => {
-          if (!old) {
-            return old;
-          }
-          return { ...old, threads: old.threads.filter((t) => t.id !== variables.threadId) };
-        }
-      );
-      setSelectedId(null);
+      removeThreadFromList(variables.threadId);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -1785,20 +1759,7 @@ export default function InboxPage() {
 
   const archiveThread = trpc.inbox.archiveThread.useMutation({
     onSuccess: (_data, variables) => {
-      // Optimistically remove from thread list.
-      utils.inbox.listThreads.setData(
-        { maxResults: PAGE_SIZE, query: appliedQuery || undefined },
-        (old) => {
-          if (!old) {
-            return old;
-          }
-          return {
-            ...old,
-            threads: old.threads.filter((t) => t.id !== variables.threadId),
-          };
-        },
-      );
-      setSelectedId(null);
+      removeThreadFromList(variables.threadId);
       toast.success("Thread archived");
     },
     onError: (error) => toast.error(error.message),
@@ -2107,7 +2068,7 @@ export default function InboxPage() {
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   // Keep latest action fns in a ref so the keydown listener never needs to be
   // torn down and re-registered when mutation state (isPending, etc.) changes.
-  const kbdRef = useRef({
+  const getKbdActions = () => ({
     archiveMutate: archiveThread.mutate,
     markReadMutate: markRead.mutate,
     starMutate: starThread.mutate,
@@ -2121,21 +2082,9 @@ export default function InboxPage() {
     selectedId,
     bulkMode,
   });
+  const kbdRef = useRef(getKbdActions());
   useEffect(() => {
-    kbdRef.current = {
-      archiveMutate: archiveThread.mutate,
-      markReadMutate: markRead.mutate,
-      starMutate: starThread.mutate,
-      unstarMutate: unstarThread.mutate,
-      trashMutate: trashThread.mutate,
-      snoozeThread,
-      clearBulk,
-      starredIds,
-      snoozedIds,
-      visibleThreads,
-      selectedId,
-      bulkMode,
-    };
+    kbdRef.current = getKbdActions();
   });
 
   useEffect(() => {

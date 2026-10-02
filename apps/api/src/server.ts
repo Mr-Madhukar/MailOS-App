@@ -20,7 +20,7 @@ import { env } from "./env";
 
 import { createTrpcRateLimitMiddleware } from "./middleware/rate-limiters";
 import { metricsMiddleware } from "./middleware/observe";
-import { snapshotMerged, toPrometheusText, incrementCounter } from "./metrics";
+import { snapshotMerged, toPrometheusText } from "./metrics";
 
 import { googleAuthRouter } from "./routes/google-auth";
 import { corsairAuthRouter } from "./routes/corsair-auth";
@@ -141,9 +141,7 @@ function buildOpenApiDocument() {
 let cachedOpenApiDocument: OpenApiDocumentWithPaths | null = null;
 
 function getOpenApiDocument(): OpenApiDocumentWithPaths {
-  if (!cachedOpenApiDocument) {
-    cachedOpenApiDocument = buildOpenApiDocument();
-  }
+  cachedOpenApiDocument ??= buildOpenApiDocument();
   return cachedOpenApiDocument;
 }
 
@@ -318,7 +316,7 @@ app.get("/metrics/json", requireOpenApiDocsAuth, async (_req, res) => {
   return res.json({ ok: true, timestamp: new Date().toISOString(), ...merged });
 });
 
-export { incrementCounter };
+export { incrementCounter } from "./metrics";
 
 logger.debug(`openapi.json: ${env.BASE_URL}/openapi.json`);
 
@@ -407,7 +405,8 @@ app.use(
 
 export default app;
 
-// Global error handler — catch unhandled errors outside tRPC.
+// Global error handler — catch unhandled errors outside tRPC (Express requires 4 args).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error("Unhandled Express error", {
     path: req.path,

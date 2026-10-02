@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { trpc } from "~/trpc/client";
+import { useModalBackdrop } from "~/hooks/use-modal-backdrop";
 import { parseQuickAddText } from "~/lib/parse-quick-add-client";
 import {
   demoEventMatchesDelete,
@@ -954,39 +955,6 @@ function CalendarBody({
   );
 }
 
-function useModalBackdrop(
-  isOpen: boolean,
-  onClose: () => void,
-  isBusy = false,
-) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const dialog = dialogRef.current;
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === dialog && !isBusy) {
-        onClose();
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isBusy) {
-        onClose();
-      }
-    };
-
-    dialog?.addEventListener("click", handleClick);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      dialog?.removeEventListener("click", handleClick);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose, isBusy]);
-
-  return dialogRef;
-}
-
 function CreateEventModal({
   isOpen,
   onClose,
@@ -1571,15 +1539,8 @@ function EventDetailModal({
   );
 }
 
-function DeleteConfirmModal({
-  isOpen,
-  onClose,
-  selectedEvent,
-  recurringEditScope,
-  setRecurringEditScope,
-  isPending,
-  onConfirm,
-}: Readonly<{
+type EventRemovalConfirmModalProps = {
+  mode: "delete" | "cancel";
   isOpen: boolean;
   onClose: () => void;
   selectedEvent: CalendarEventItem | null;
@@ -1587,9 +1548,28 @@ function DeleteConfirmModal({
   setRecurringEditScope: (scope: RecurringEditScope) => void;
   isPending: boolean;
   onConfirm: () => void;
-}>) {
+};
+
+function EventRemovalConfirmModal({
+  mode,
+  isOpen,
+  onClose,
+  selectedEvent,
+  recurringEditScope,
+  setRecurringEditScope,
+  isPending,
+  onConfirm,
+}: Readonly<EventRemovalConfirmModalProps>) {
   const dialogRef = useModalBackdrop(isOpen && Boolean(selectedEvent), onClose, isPending);
   if (!isOpen || !selectedEvent) return null;
+
+  const isCancel = mode === "cancel";
+  const title = isCancel ? "Queue cancellation?" : "Queue delete?";
+  const description = isCancel
+    ? "This queues a cancellation email to all attendees and removes the event. Nothing is sent until you approve in Queue."
+    : "This adds a delete request to your approval queue. The event stays on Google Calendar until you approve.";
+  const scopeLabel = isCancel ? "Cancel scope" : "Delete scope";
+  const radioName = isCancel ? "recurring-cancel-scope" : "recurring-delete-scope";
 
   return (
     <dialog
@@ -1600,7 +1580,7 @@ function DeleteConfirmModal({
     >
       <div className="thread-modal thread-cal-delete-modal thread-cal-confirm-modal">
         <div className="thread-modal-head">
-          <h3>Queue delete?</h3>
+          <h3>{title}</h3>
           <button
             type="button"
             className="thread-app-iconbtn"
@@ -1613,8 +1593,7 @@ function DeleteConfirmModal({
         <div className="thread-cal-event-detail">
           <p className="thread-cal-confirm-title">{selectedEvent.summary}</p>
           <p className="thread-cal-event-detail-copy">
-            This adds a delete request to your approval queue. The event stays on Google Calendar
-            until you approve.
+            {description}
             {selectedEvent.isRecurring ? (
               <>
                 {" "}
@@ -1624,11 +1603,11 @@ function DeleteConfirmModal({
           </p>
           {selectedEvent.isRecurring ? (
             <div className="thread-cal-recurring-scope" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span className="thread-set-label">Delete scope</span>
+              <span className="thread-set-label">{scopeLabel}</span>
               <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
                 <input
                   type="radio"
-                  name="recurring-delete-scope"
+                  name={radioName}
                   checked={recurringEditScope === "instance"}
                   onChange={() => setRecurringEditScope("instance")}
                 />
@@ -1637,7 +1616,7 @@ function DeleteConfirmModal({
               <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
                 <input
                   type="radio"
-                  name="recurring-delete-scope"
+                  name={radioName}
                   checked={recurringEditScope === "series"}
                   onChange={() => setRecurringEditScope("series")}
                 />
@@ -1646,7 +1625,7 @@ function DeleteConfirmModal({
               <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
                 <input
                   type="radio"
-                  name="recurring-delete-scope"
+                  name={radioName}
                   checked={recurringEditScope === "following"}
                   onChange={() => setRecurringEditScope("following")}
                 />
@@ -1679,112 +1658,12 @@ function DeleteConfirmModal({
   );
 }
 
-function CancelConfirmModal({
-  isOpen,
-  onClose,
-  selectedEvent,
-  recurringEditScope,
-  setRecurringEditScope,
-  isPending,
-  onConfirm,
-}: Readonly<{
-  isOpen: boolean;
-  onClose: () => void;
-  selectedEvent: CalendarEventItem | null;
-  recurringEditScope: RecurringEditScope;
-  setRecurringEditScope: (scope: RecurringEditScope) => void;
-  isPending: boolean;
-  onConfirm: () => void;
-}>) {
-  const dialogRef = useModalBackdrop(isOpen && Boolean(selectedEvent), onClose, isPending);
-  if (!isOpen || !selectedEvent) return null;
+function DeleteConfirmModal(props: Readonly<Omit<EventRemovalConfirmModalProps, "mode">>) {
+  return <EventRemovalConfirmModal {...props} mode="delete" />;
+}
 
-  return (
-    <dialog
-      ref={dialogRef}
-      open
-      aria-modal="true"
-      className="thread-modal-backdrop thread-modal-backdrop--confirm"
-    >
-      <div className="thread-modal thread-cal-delete-modal thread-cal-confirm-modal">
-        <div className="thread-modal-head">
-          <h3>Queue cancellation?</h3>
-          <button
-            type="button"
-            className="thread-app-iconbtn"
-            disabled={isPending}
-            onClick={onClose}
-          >
-            <X size={14} />
-          </button>
-        </div>
-        <div className="thread-cal-event-detail">
-          <p className="thread-cal-confirm-title">{selectedEvent.summary}</p>
-          <p className="thread-cal-event-detail-copy">
-            This queues a cancellation email to all attendees and removes the event. Nothing is sent
-            until you approve in Queue.
-            {selectedEvent.isRecurring ? (
-              <>
-                {" "}
-                {RECURRING_DELETE_DESCRIPTIONS[recurringEditScope] ?? RECURRING_DELETE_DESCRIPTIONS.instance}
-              </>
-            ) : null}
-          </p>
-          {selectedEvent.isRecurring ? (
-            <div className="thread-cal-recurring-scope" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span className="thread-set-label">Cancel scope</span>
-              <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                <input
-                  type="radio"
-                  name="recurring-cancel-scope"
-                  checked={recurringEditScope === "instance"}
-                  onChange={() => setRecurringEditScope("instance")}
-                />
-                <span>This event only</span>
-              </label>
-              <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                <input
-                  type="radio"
-                  name="recurring-cancel-scope"
-                  checked={recurringEditScope === "series"}
-                  onChange={() => setRecurringEditScope("series")}
-                />
-                <span>All events in the series</span>
-              </label>
-              <label className="thread-cal-scope-option" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                <input
-                  type="radio"
-                  name="recurring-cancel-scope"
-                  checked={recurringEditScope === "following"}
-                  onChange={() => setRecurringEditScope("following")}
-                />
-                <span>This and following events</span>
-              </label>
-            </div>
-          ) : null}
-        </div>
-        <div className="thread-modal-actions">
-          <button
-            type="button"
-            className="thread-btn-ghost"
-            disabled={isPending}
-            onClick={onClose}
-          >
-            Keep event
-          </button>
-          <button
-            type="button"
-            className="thread-btn-ghost thread-cal-event-delete"
-            disabled={isPending}
-            onClick={onConfirm}
-          >
-            <Trash2 size={14} />
-            {isPending ? "Queuing…" : "Add to queue"}
-          </button>
-        </div>
-      </div>
-    </dialog>
-  );
+function CancelConfirmModal(props: Readonly<Omit<EventRemovalConfirmModalProps, "mode">>) {
+  return <EventRemovalConfirmModal {...props} mode="cancel" />;
 }
 
 function QueueActionModal({

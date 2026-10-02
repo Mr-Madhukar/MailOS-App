@@ -142,3 +142,10 @@ export function getCalendarService(): CalendarService {
 }
 
 export { resolveCalendarEventId, type CalendarEditScope } from "./scope";
+export { parseQuickAddText, type ParsedQuickAdd } from "./parse-quick-add";
+export {
+  isQuickDeleteIntent,
+  parseQuickDeleteText,
+  demoEventMatchesDelete,
+  type ParsedQuickDelete,
+} from "./parse-quick-delete";

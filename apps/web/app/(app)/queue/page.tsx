@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Archive,
@@ -27,6 +27,7 @@ import {
   localDateTimeRangeToPayload,
   validateLocalDateTimeRange,
 } from "~/lib/calendar-datetime";
+import { useModalBackdrop } from "~/hooks/use-modal-backdrop";
 
 const KIND_LABEL: Record<string, string> = {
   email_send: "Send email",
@@ -216,39 +217,25 @@ function QueueCard({
   );
 }
 
-function useModalBackdrop(
-  isOpen: boolean,
-  onClose: () => void,
-  isBusy = false,
+function applyOptimisticQueueStatus(
+  old: RouterOutputs["queue"]["list"] | undefined,
+  tab: "pending" | "all",
+  id: string,
+  newStatus: "approved" | "dismissed",
 ) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const dialog = dialogRef.current;
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === dialog && !isBusy) {
-        onClose();
-      }
+  if (!old) return old;
+  if (tab === "pending") {
+    return {
+      ...old,
+      items: old.items.filter((item) => item.id !== id),
     };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isBusy) {
-        onClose();
-      }
-    };
-
-    dialog?.addEventListener("click", handleClick);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      dialog?.removeEventListener("click", handleClick);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose, isBusy]);
-
-  return dialogRef;
+  }
+  return {
+    ...old,
+    items: old.items.map((item) =>
+      item.id === id ? { ...item, status: newStatus } : item,
+    ),
+  };
 }
 
 export default function QueuePage() {
@@ -271,21 +258,9 @@ export default function QueuePage() {
       // Optimistic update: mark item as approved immediately
       await utils.queue.list.cancel();
       const prev = utils.queue.list.getData({ status: tab === "pending" ? "pending" : "all" });
-      utils.queue.list.setData({ status: tab === "pending" ? "pending" : "all" }, (old) => {
-        if (!old) return old;
-        if (tab === "pending") {
-          return {
-            ...old,
-            items: old.items.filter((item) => item.id !== id),
-          };
-        }
-        return {
-          ...old,
-          items: old.items.map((item) =>
-            item.id === id ? { ...item, status: "approved" as const } : item,
-          ),
-        };
-      });
+      utils.queue.list.setData({ status: tab === "pending" ? "pending" : "all" }, (old) =>
+        applyOptimisticQueueStatus(old, tab, id, "approved"),
+      );
       return { prev };
     },
     onSuccess: async (data) => {
@@ -326,21 +301,9 @@ export default function QueuePage() {
       await utils.queue.list.cancel();
       const prev = utils.queue.list.getData({ status: tab === "pending" ? "pending" : "all" });
       const dismissedItem = prev?.items.find((item) => item.id === id);
-      utils.queue.list.setData({ status: tab === "pending" ? "pending" : "all" }, (old) => {
-        if (!old) return old;
-        if (tab === "pending") {
-          return {
-            ...old,
-            items: old.items.filter((item) => item.id !== id),
-          };
-        }
-        return {
-          ...old,
-          items: old.items.map((item) =>
-            item.id === id ? { ...item, status: "dismissed" as const } : item,
-          ),
-        };
-      });
+      utils.queue.list.setData({ status: tab === "pending" ? "pending" : "all" }, (old) =>
+        applyOptimisticQueueStatus(old, tab, id, "dismissed"),
+      );
       return { prev, dismissedItem };
     },
     onSuccess: async (_data, _vars, ctx) => {
