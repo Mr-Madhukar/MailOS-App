@@ -2,9 +2,7 @@ import { isGoogleOAuthConfigured, generateGoogleAuthUrl } from "../clients/googl
 import { GetAuthenticationMethodOutputSchema } from "./model";
 
 class UserService {
-  public async getAuthenticationMethods(): Promise<
-    ReadonlyArray<GetAuthenticationMethodOutputSchema>
-  > {
+  public getAuthenticationMethods(): ReadonlyArray<GetAuthenticationMethodOutputSchema> {
     const supportedAuthenticationProviders: GetAuthenticationMethodOutputSchema[] = [];
 
     if (isGoogleOAuthConfigured()) {

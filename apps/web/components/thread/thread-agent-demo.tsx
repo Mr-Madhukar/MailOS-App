@@ -187,7 +187,7 @@ export function ThreadAgentDemo() {
               scenario.effect
             ) : (
               <div className="thread-agent-effect-wait">
-                <span className="thread-agent-typing"><i /><i /><i /></span>
+                <span className="thread-agent-typing"><i /><i /><i /></span>{" "}
                 waiting for agent…
               </div>
             )}

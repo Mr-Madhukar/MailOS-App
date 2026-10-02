@@ -102,7 +102,7 @@ const BATCH_SIZE = 12;
 
 function hashScore(seed: string, min: number, max: number): number {
   let hash = 0;
-  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  for (const char of seed) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
   const span = max - min + 1;
   return min + (hash % span);
 }

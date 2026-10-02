@@ -13,7 +13,7 @@ export const observabilityRouter = router({
         mcpToolCalls: z.number().int(),
       }),
     )
-    .query(async () => {
+    .query(() => {
       const counters = getSharedCounters();
       const mcpToolCalls = Object.entries(counters)
         .filter(([key]) => key.startsWith("mcp.tool."))

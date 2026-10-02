@@ -90,7 +90,7 @@ export const inboxRouter = router({
     .output(connectionStatusSchema)
     .query(async ({ ctx }) => {
       const inbox = getInboxService();
-      return inbox.getConnectionStatus(ctx.user.id);
+      return await inbox.getConnectionStatus(ctx.user.id);
     }),
 
   listThreads: protectedProcedure
@@ -280,7 +280,7 @@ export const inboxRouter = router({
     .output(z.array(z.object({ id: z.string(), name: z.string(), type: z.string().optional() })))
     .query(async ({ ctx }) => {
       const inbox = getInboxService();
-      return inbox.listLabels(ctx.user.id);
+      return await inbox.listLabels(ctx.user.id);
     }),
 
   createLabel: protectedProcedure
@@ -478,7 +478,7 @@ export const inboxRouter = router({
     .output(z.object({ id: z.string(), name: z.string(), type: z.string().optional() }).nullable())
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.getLabel(ctx.user.id, input.labelId);
+      return await inbox.getLabel(ctx.user.id, input.labelId);
     }),
 
   updateLabel: protectedProcedure
@@ -536,7 +536,7 @@ export const inboxRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.listMessages(ctx.user.id, input);
+      return await inbox.listMessages(ctx.user.id, input);
     }),
 
   modifyMessage: protectedProcedure
@@ -681,7 +681,7 @@ export const inboxRouter = router({
     .output(z.object({ threads: z.array(inboxThreadSchema) }))
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.searchThreadsDb(ctx.user.id, input);
+      return await inbox.searchThreadsDb(ctx.user.id, input);
     }),
 
   searchMessagesDb: protectedProcedure
@@ -709,7 +709,7 @@ export const inboxRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.searchMessagesDb(ctx.user.id, input);
+      return await inbox.searchMessagesDb(ctx.user.id, input);
     }),
 
   searchDraftsDb: protectedProcedure
@@ -727,7 +727,7 @@ export const inboxRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.searchDraftsDb(ctx.user.id, input);
+      return await inbox.searchDraftsDb(ctx.user.id, input);
     }),
 
   searchLabelsDb: protectedProcedure
@@ -746,7 +746,7 @@ export const inboxRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const inbox = getInboxService();
-      return inbox.searchLabelsDb(ctx.user.id, input);
+      return await inbox.searchLabelsDb(ctx.user.id, input);
     }),
 
   disconnectGmail: protectedProcedure

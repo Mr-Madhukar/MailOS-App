@@ -105,7 +105,7 @@ export async function getMeetingPrep(input: {
 
   if (summary.length > 3) {
     searchQueries.push(
-      `newer_than:30d subject:"${summary.replace(/"/g, "").slice(0, 50)}"`,
+      `newer_than:30d subject:"${summary.replaceAll('"', "").slice(0, 50)}"`,
     );
   }
   for (const email of attendeeEmails.slice(0, 2)) {

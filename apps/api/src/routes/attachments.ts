@@ -54,7 +54,7 @@ attachmentsRouter.get("/:messageId/:attachmentId", async (req, res) => {
     }
 
     // Gmail returns base64url-encoded data
-    const buffer = Buffer.from(attachment.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    const buffer = Buffer.from(attachment.data.replaceAll("-", "+").replaceAll("_", "/"), "base64");
 
     const safeFilename = filename.replace(/[^\w.\-() ]/g, "_").slice(0, 200);
 

@@ -12,21 +12,21 @@ export function buildGmailApiHooks() {
   return {
     messages: {
       send: {
-        after: async () => {
+        after: () => {
           incrementCounter("corsair.hooks.gmail.messages.send");
         },
       },
     },
     threads: {
       list: {
-        after: async () => {
+        after: () => {
           incrementCounter("corsair.hooks.gmail.threads.list");
         },
       },
     },
     drafts: {
       send: {
-        after: async () => {
+        after: () => {
           incrementCounter("corsair.hooks.gmail.drafts.send");
         },
       },
@@ -38,12 +38,12 @@ export function buildGoogleCalendarApiHooks() {
   return {
     events: {
       create: {
-        after: async () => {
+        after: () => {
           incrementCounter("corsair.hooks.googlecalendar.events.create");
         },
       },
       delete: {
-        before: async (ctx, args) => {
+        before: (ctx, args) => {
           logger.info("corsair.calendar.events.delete requested", { eventId: args.id });
           return { ctx, args };
         },

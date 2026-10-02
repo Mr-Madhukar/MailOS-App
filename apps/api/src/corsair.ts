@@ -35,21 +35,25 @@ function initCorsairInstance() {
             (error as { response?: { status?: number } }).response?.status;
           return status === 429 || msg.includes("rate") || msg.includes("quota");
         },
-        handler: async () => ({
-          maxRetries: 4,
-          retryStrategy: "exponential_backoff_jitter" as const,
-        }),
+        handler: () =>
+          Promise.resolve({
+            maxRetries: 4,
+            retryStrategy: "exponential_backoff_jitter" as const,
+          }),
       },
       DEFAULT: {
         match: () => true,
-        handler: async (error: unknown) => {
+        handler: (error: unknown) => {
           const status =
             (error as { status?: number; response?: { status?: number } }).status ??
             (error as { response?: { status?: number } }).response?.status;
           if (status !== undefined && status >= 500) {
-            return { maxRetries: 2, retryStrategy: "exponential_backoff_jitter" as const };
+            return Promise.resolve({
+              maxRetries: 2,
+              retryStrategy: "exponential_backoff_jitter" as const,
+            });
           }
-          return { maxRetries: 0 };
+          return Promise.resolve({ maxRetries: 0 });
         },
       },
     },

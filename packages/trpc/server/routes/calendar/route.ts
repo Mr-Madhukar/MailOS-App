@@ -67,7 +67,7 @@ export const calendarRouter = router({
     )
     .query(async ({ ctx }) => {
       const calendar = getCalendarService();
-      return calendar.getConnectionStatus(ctx.user.id);
+      return await calendar.getConnectionStatus(ctx.user.id);
     }),
 
   listEvents: protectedProcedure
@@ -329,7 +329,7 @@ export const calendarRouter = router({
     .output(z.object({ events: z.array(calendarEventSchema) }))
     .query(async ({ ctx, input }) => {
       const calendar = getCalendarService();
-      return calendar.searchEventsDb(ctx.user.id, input);
+      return await calendar.searchEventsDb(ctx.user.id, input);
     }),
 
   searchCalendarsDb: protectedProcedure
@@ -350,6 +350,6 @@ export const calendarRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const calendar = getCalendarService();
-      return calendar.searchCalendarsDb(ctx.user.id, input);
+      return await calendar.searchCalendarsDb(ctx.user.id, input);
     }),
 });

@@ -229,7 +229,7 @@ export class CorsairInboxService implements InboxService {
     const corsair = getCorsair();
     const redirectUri = getCorsairGmailRedirectUri();
     const { processOAuthCallback } = getCorsairOAuthModule();
-    return processOAuthCallback(corsair, {
+    return await processOAuthCallback(corsair, {
       code: input.code,
       state: input.state,
       redirectUri,

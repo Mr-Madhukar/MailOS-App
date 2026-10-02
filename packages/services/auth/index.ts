@@ -128,7 +128,7 @@ class AuthService {
       .where(eq(usersTable.id, userId));
   }
 
-  private async resolveTokenUserId(req: Request) {
+  private resolveTokenUserId(req: Request) {
     const accessToken = req.cookies?.jwt as string | undefined;
     const refreshToken = req.cookies?.jwt_refresh as string | undefined;
 
@@ -339,7 +339,7 @@ class AuthService {
   }
 
   public async logout(req: Request, res: Response) {
-    const userId = await this.resolveTokenUserId(req);
+    const userId = this.resolveTokenUserId(req);
     if (userId) await this.revokeRefreshTokens(userId);
     clearAuthCookies(res);
     return { message: "Logged out successfully" };

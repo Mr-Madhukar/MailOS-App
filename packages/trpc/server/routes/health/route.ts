@@ -10,7 +10,7 @@ export const healthRouter = router({
         status: z.literal("healthy").describe("status of the server"),
       }),
     )
-    .query(async () => {
+    .query(() => {
       return {
         status: "healthy",
       };

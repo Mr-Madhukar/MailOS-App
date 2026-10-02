@@ -13,7 +13,7 @@ const authService = new AuthService();
 
 export const googleAuthRouter = Router();
 
-googleAuthRouter.get("/google", async (req, res) => {
+googleAuthRouter.get("/google", (req, res) => {
   const returnTo = sanitizeRedirectPath(req.query.state as string | undefined);
   const clientUrl = env.CLIENT_URL;
 
@@ -117,7 +117,7 @@ googleAuthRouter.get("/google/callback", async (req, res) => {
       errorDescription?.trim() ||
       (oauthError === "redirect_uri_mismatch"
         ? "Google sign-in redirect URI mismatch. Clear cookies and try again from the sign-in page."
-        : oauthError.replace(/_/g, " "));
+        : oauthError.replaceAll("_", " "));
     return res.redirect(`${env.CLIENT_URL}/sign-in?error=${encodeURIComponent(message)}`);
   }
 

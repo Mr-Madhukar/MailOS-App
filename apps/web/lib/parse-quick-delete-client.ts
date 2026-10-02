@@ -33,7 +33,7 @@ export type ParsedQuickDelete = {
 };
 
 function monthIndex(token: string): number | null {
-  const key = token.toLowerCase().replace(/\./g, "");
+  const key = token.toLowerCase().replaceAll(".", "");
   return MONTHS[key] ?? null;
 }
 

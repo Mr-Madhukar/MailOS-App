@@ -156,7 +156,7 @@ export class CorsairCalendarService implements CalendarService {
     const corsair = getCorsair();
     const redirectUri = getCorsairCalendarRedirectUri();
     const { processOAuthCallback } = getCorsairOAuthModule();
-    return processOAuthCallback(corsair, {
+    return await processOAuthCallback(corsair, {
       code: input.code,
       state: input.state,
       redirectUri,

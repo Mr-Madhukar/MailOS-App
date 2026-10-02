@@ -168,7 +168,7 @@ export const aiRouter = router({
         model: z.string().optional(),
       }),
     )
-    .query(async () => {
+    .query(() => {
       return {
         openai: isInboxAiConfigured(),
         model: isInboxAiConfigured() ? process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini" : undefined,

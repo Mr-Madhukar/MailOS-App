@@ -8,21 +8,21 @@ import type { InboxService } from "@repo/services/inbox";
  */
 export function createE2eMockInboxService(inner: InboxService): InboxService {
   const overrides: Partial<InboxService> = {
-    async getConnectionStatus(tenantId) {
+    getConnectionStatus(tenantId) {
       void tenantId;
-      return { gmail: "connected" as const };
+      return Promise.resolve({ gmail: "connected" as const });
     },
-    async sendMessage(tenantId, input) {
+    sendMessage(tenantId, input) {
       void tenantId;
-      return {
+      return Promise.resolve({
         id: `e2e-msg-${Date.now()}`,
         threadId: input.threadId ?? `e2e-thread-${Date.now()}`,
-      };
+      });
     },
-    async createDraft(tenantId, input) {
+    createDraft(tenantId, input) {
       void tenantId;
       void input;
-      return { id: `e2e-draft-${Date.now()}` };
+      return Promise.resolve({ id: `e2e-draft-${Date.now()}` });
     },
   };
 

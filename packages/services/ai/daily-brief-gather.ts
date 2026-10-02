@@ -127,7 +127,7 @@ function buildMeetingSearchQuery(event: CalendarEvent): string | null {
   const summary = event.summary?.trim();
   const attendee = event.attendees?.find((a) => a.email && !a.organizer)?.email?.trim();
   if (summary && summary.length > 2) {
-    return `newer_than:30d subject:"${summary.replace(/"/g, "")}"`;
+    return `newer_than:30d subject:"${summary.replaceAll('"', "")}"`;
   }
   if (attendee) {
     return `newer_than:30d from:${attendee}`;

@@ -94,7 +94,7 @@ export async function getThreadContext(input: {
   // Corsair: search related threads by subject keywords and sender
   const subjectKeyword = subject.replace(/^(re:|fwd?:)\s*/i, "").trim().slice(0, 60);
   const relatedQuery = subjectKeyword
-    ? `subject:"${subjectKeyword.replace(/"/g, "")}" -id:${input.threadId}`
+    ? `subject:"${subjectKeyword.replaceAll('"', "")}" -id:${input.threadId}`
     : fromEmail
       ? `from:${fromEmail} -id:${input.threadId} newer_than:30d`
       : null;

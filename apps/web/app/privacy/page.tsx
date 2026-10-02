@@ -38,8 +38,7 @@ export default function PrivacyPage() {
           your{" "}
           <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
             Google Account settings
-          </a>
-          .
+          </a>.
         </p>
       </Section>
 
@@ -72,8 +71,7 @@ export default function PrivacyPage() {
             rel="noreferrer"
           >
             API data usage policy
-          </a>
-          .
+          </a>.
         </p>
       </Section>
 
@@ -100,8 +98,7 @@ export default function PrivacyPage() {
             Revoke Google permissions from{" "}
             <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
               myaccount.google.com/permissions
-            </a>
-            .
+            </a>.
           </li>
         </ul>
       </Section>

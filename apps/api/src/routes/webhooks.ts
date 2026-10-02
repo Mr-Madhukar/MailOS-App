@@ -104,7 +104,7 @@ async function resolveTenantId(body: unknown): Promise<string | null> {
  * Uses Gmail History API for incremental sync when a stored historyId is
  * available. Falls back to a full list if history is too stale or missing.
  */
-async function refreshTenantInboxIncremental(tenantId: string, incomingHistoryId?: string) {
+function refreshTenantInboxIncremental(tenantId: string, incomingHistoryId?: string) {
   return webhookTracer.startActiveSpan("gmail.webhook.incremental", async (span) => {
     span.setAttribute("tenant.id", tenantId);
     try {
