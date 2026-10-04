@@ -205,197 +205,180 @@ export function enrichThreadOpenApi(
 
   // ── Reference paths (not tRPC REST — documented for judges) ──────────────
 
-  const referenceEntries: Array<{
-    path: string;
-    method: string;
-    operation: OpenApiOperation;
-  }> = [
-    {
-      path: "/mcp",
-      method: "post",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Thread MCP server (JSON-RPC 2.0)",
-        description: [
-          "Full **MCP 2024-11-05** server with **57 domain tools**: inbox, queue, calendar, AI, Corsair DB search.",
-          "",
-          "**Public methods** (no auth): `initialize`, `tools/list`, `resources/list`, `prompts/list`",
-          "",
-          "**Protected methods**: `tools/call`, `resources/read`, `prompts/get` — session cookie or MCP bearer.",
-          "",
-          "See `mcp-server.json` in the repo for the complete tool manifest.",
-          "",
-          "### Example: tools/list",
-          "",
-          "```json",
-          '{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }',
-          "```",
-          "",
-          "### Example: tools/call (queue email)",
-          "",
-          "```json",
-          '{ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "queue_email", "arguments": { "to": "a@b.com", "subject": "Hi", "body": "Hello" } } }',
-          "```",
-        ].join("\n"),
-        responses: {
-          "200": { description: "JSON-RPC 2.0 response" },
-          "401": { description: "Authentication required for tools/call" },
-        },
-      },
-    },
-    {
-      path: "/mcp/corsair",
-      method: "post",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Official Corsair MCP adapter (@corsair-dev/mcp)",
-        description: [
-          "Dynamic Corsair SDK access: `corsair_setup`, `list_operations`, `get_schema`, `run_script`.",
-          "",
-          "Requires the same auth as `/mcp`. Uses Corsair **Permissions** UI for destructive operations.",
-        ].join("\n"),
-        responses: { "200": { description: "JSON-RPC 2.0 response" } },
-      },
-    },
-    {
-      path: "/webhooks/gmail",
-      method: "post",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Gmail Pub/Sub webhook (Corsair)",
-        description:
-          "Google Pub/Sub push endpoint. Validates CORSAIR_WEBHOOK_SECRET, resolves tenant, runs incremental Gmail history sync via Corsair.",
-        responses: { "200": { description: "Acknowledged" }, "503": { description: "Webhook secret not configured" } },
-      },
-    },
-    {
-      path: "/webhooks/calendar",
-      method: "post",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Google Calendar push notification webhook",
-        description: "Calendar push channel callback — refreshes events for the tenant via Corsair.",
-        responses: { "200": { description: "Acknowledged" } },
-      },
-    },
-    {
-      path: "/agent/stream",
-      method: "post",
-      operation: {
-        tags: ["Agent"],
-        summary: "Agent streaming chat (Server-Sent Events)",
-        description: [
-          "Streaming variant of `POST /api/agent/chat`. Returns SSE events: `status`, `token`, `complete`, `error`.",
-          "",
-          "Supports sessionId, focus thread/event, tool memory. Same 57 tools as MCP.",
-        ].join("\n"),
-        responses: { "200": { description: "text/event-stream" } },
-      },
-    },
-    {
-      path: "/api-connect/gmail",
-      method: "get",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Connect Gmail via Corsair OAuth",
-        description: `Browser redirect flow. Implemented on Next.js at ${clientUrl}/api-connect/gmail. Completes Corsair OAuth and registers Gmail watch.`,
-        responses: { "302": { description: "Redirect to Google consent or back to app" } },
-      },
-    },
-    {
-      path: "/api-connect/calendar",
-      method: "get",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Connect Google Calendar via Corsair OAuth",
-        description: `Browser redirect at ${clientUrl}/api-connect/calendar. Registers Calendar push channel on success.`,
-        responses: { "302": { description: "Redirect to Google consent or back to app" } },
-      },
-    },
-    {
-      path: "/health",
-      method: "get",
-      operation: {
-        tags: ["Health"],
-        summary: "Liveness probe",
-        description: "Returns `{ ok: true }` when the API process is running. No auth required.",
-        responses: { "200": { description: "Service alive" } },
-      },
-    },
-    {
-      path: "/ready",
-      method: "get",
-      operation: {
-        tags: ["Health"],
-        summary: "Readiness probe",
-        description: "Checks database connectivity and Corsair configuration. Returns 503 if not ready.",
-        responses: { "200": { description: "Ready to serve traffic" }, "503": { description: "Not ready" } },
-      },
-    },
-    {
-      path: "/metrics",
-      method: "get",
-      operation: {
-        tags: ["Health"],
-        summary: "Prometheus metrics",
-        description: "Prometheus text format metrics (request counts, latencies). Requires docs auth in production.",
-        responses: { "200": { description: "text/plain Prometheus metrics" } },
-      },
-    },
-    {
-      path: "/sync/events",
-      method: "get",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Real-time sync events (SSE)",
-        description: [
-          "Server-Sent Events stream for UI cache invalidation.",
-          "",
-          "Events: `gmail.sync`, `calendar.sync`, `queue.updated` — inbox/calendar pages auto-refresh.",
-        ].join("\n"),
-        responses: { "200": { description: "text/event-stream" } },
-      },
-    },
-    {
-      path: "/webhooks/corsair",
-      method: "post",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Corsair internal webhook",
-        description: "Corsair plugin webhook hooks endpoint. Validates secret, routes to tenant handlers.",
-        responses: { "200": { description: "Acknowledged" } },
-      },
-    },
-    {
-      path: "/openapi.json",
-      method: "get",
-      operation: {
-        tags: ["Health"],
-        summary: "OpenAPI 3.1 specification",
-        description: "Machine-readable spec for this Scalar UI. Generated from tRPC OpenAPI + Thread enrichment.",
-        responses: { "200": { description: "application/json OpenAPI document" } },
-      },
-    },
-    {
-      path: "/api/corsair/{path}",
-      method: "get",
-      operation: {
-        tags: ["MCP & Webhooks"],
-        summary: "Corsair SDK management API",
-        description: [
-          "Dynamic Corsair management routes via `corsair.toExpressHandler`.",
-          "",
-          "Includes connection status, backfill triggers, audit logs — see Corsair SDK docs.",
-          "",
-          "Base path: `/api/corsair/*` (also POST/PATCH/DELETE as supported by Corsair).",
-        ].join("\n"),
-        responses: { "200": { description: "Corsair management response" }, "503": { description: "Corsair not configured" } },
-      },
-    },
+  // ── Reference paths (not tRPC REST — documented for judges) ──────────────
+
+  type ReferenceRouteTuple = readonly [
+    path: string,
+    method: string,
+    tags: readonly string[],
+    summary: string,
+    description: string,
+    responses?: Record<string, { description?: string }>,
   ];
 
-  for (const entry of referenceEntries) {
-    addReferencePath(document, entry.path, entry.method, entry.operation);
+  const REFERENCE_ROUTES: readonly ReferenceRouteTuple[] = [
+    [
+      "/mcp",
+      "post",
+      ["MCP & Webhooks"],
+      "Thread MCP server (JSON-RPC 2.0)",
+      [
+        "Full **MCP 2024-11-05** server with **57 domain tools**: inbox, queue, calendar, AI, Corsair DB search.",
+        "",
+        "**Public methods** (no auth): `initialize`, `tools/list`, `resources/list`, `prompts/list`",
+        "",
+        "**Protected methods**: `tools/call`, `resources/read`, `prompts/get` — session cookie or MCP bearer.",
+        "",
+        "See `mcp-server.json` in the repo for the complete tool manifest.",
+        "",
+        "### Example: tools/list",
+        "",
+        "```json",
+        '{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }',
+        "```",
+        "",
+        "### Example: tools/call (queue email)",
+        "",
+        "```json",
+        '{ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "queue_email", "arguments": { "to": "a@b.com", "subject": "Hi", "body": "Hello" } } }',
+        "```",
+      ].join("\n"),
+      {
+        "200": { description: "JSON-RPC 2.0 response" },
+        "401": { description: "Authentication required for tools/call" },
+      },
+    ],
+    [
+      "/mcp/corsair",
+      "post",
+      ["MCP & Webhooks"],
+      "Official Corsair MCP adapter (@corsair-dev/mcp)",
+      [
+        "Dynamic Corsair SDK access: `corsair_setup`, `list_operations`, `get_schema`, `run_script`.",
+        "",
+        "Requires the same auth as `/mcp`. Uses Corsair **Permissions** UI for destructive operations.",
+      ].join("\n"),
+      { "200": { description: "JSON-RPC 2.0 response" } },
+    ],
+    [
+      "/webhooks/gmail",
+      "post",
+      ["MCP & Webhooks"],
+      "Gmail Pub/Sub webhook (Corsair)",
+      "Google Pub/Sub push endpoint. Validates CORSAIR_WEBHOOK_SECRET, resolves tenant, runs incremental Gmail history sync via Corsair.",
+      { "200": { description: "Acknowledged" }, "503": { description: "Webhook secret not configured" } },
+    ],
+    [
+      "/webhooks/calendar",
+      "post",
+      ["MCP & Webhooks"],
+      "Google Calendar push notification webhook",
+      "Calendar push channel callback — refreshes events for the tenant via Corsair.",
+      { "200": { description: "Acknowledged" } },
+    ],
+    [
+      "/agent/stream",
+      "post",
+      ["Agent"],
+      "Agent streaming chat (Server-Sent Events)",
+      [
+        "Streaming variant of `POST /api/agent/chat`. Returns SSE events: `status`, `token`, `complete`, `error`.",
+        "",
+        "Supports sessionId, focus thread/event, tool memory. Same 57 tools as MCP.",
+      ].join("\n"),
+      { "200": { description: "text/event-stream" } },
+    ],
+    [
+      "/api-connect/gmail",
+      "get",
+      ["MCP & Webhooks"],
+      "Connect Gmail via Corsair OAuth",
+      `Browser redirect flow. Implemented on Next.js at ${clientUrl}/api-connect/gmail. Completes Corsair OAuth and registers Gmail watch.`,
+      { "302": { description: "Redirect to Google consent or back to app" } },
+    ],
+    [
+      "/api-connect/calendar",
+      "get",
+      ["MCP & Webhooks"],
+      "Connect Google Calendar via Corsair OAuth",
+      `Browser redirect at ${clientUrl}/api-connect/calendar. Registers Calendar push channel on success.`,
+      { "302": { description: "Redirect to Google consent or back to app" } },
+    ],
+    [
+      "/health",
+      "get",
+      ["Health"],
+      "Liveness probe",
+      "Returns `{ ok: true }` when the API process is running. No auth required.",
+      { "200": { description: "Service alive" } },
+    ],
+    [
+      "/ready",
+      "get",
+      ["Health"],
+      "Readiness probe",
+      "Checks database connectivity and Corsair configuration. Returns 503 if not ready.",
+      { "200": { description: "Ready to serve traffic" }, "503": { description: "Not ready" } },
+    ],
+    [
+      "/metrics",
+      "get",
+      ["Health"],
+      "Prometheus metrics",
+      "Prometheus text format metrics (request counts, latencies). Requires docs auth in production.",
+      { "200": { description: "text/plain Prometheus metrics" } },
+    ],
+    [
+      "/sync/events",
+      "get",
+      ["MCP & Webhooks"],
+      "Real-time sync events (SSE)",
+      [
+        "Server-Sent Events stream for UI cache invalidation.",
+        "",
+        "Events: `gmail.sync`, `calendar.sync`, `queue.updated` — inbox/calendar pages auto-refresh.",
+      ].join("\n"),
+      { "200": { description: "text/event-stream" } },
+    ],
+    [
+      "/webhooks/corsair",
+      "post",
+      ["MCP & Webhooks"],
+      "Corsair internal webhook",
+      "Corsair plugin webhook hooks endpoint. Validates secret, routes to tenant handlers.",
+      { "200": { description: "Acknowledged" } },
+    ],
+    [
+      "/openapi.json",
+      "get",
+      ["Health"],
+      "OpenAPI 3.1 specification",
+      "Machine-readable spec for this Scalar UI. Generated from tRPC OpenAPI + Thread enrichment.",
+      { "200": { description: "application/json OpenAPI document" } },
+    ],
+    [
+      "/api/corsair/{path}",
+      "get",
+      ["MCP & Webhooks"],
+      "Corsair SDK management API",
+      [
+        "Dynamic Corsair management routes via `corsair.toExpressHandler`.",
+        "",
+        "Includes connection status, backfill triggers, audit logs — see Corsair SDK docs.",
+        "",
+        "Base path: `/api/corsair/*` (also POST/PATCH/DELETE as supported by Corsair).",
+      ].join("\n"),
+      { "200": { description: "Corsair management response" }, "503": { description: "Corsair not configured" } },
+    ],
+  ];
+
+  for (const [path, method, tags, summary, description, responses] of REFERENCE_ROUTES) {
+    addReferencePath(document, path, method, {
+      tags: [...tags],
+      summary,
+      description,
+      responses,
+    });
   }
 
   // ── Apply full route catalog (~116 endpoints) ──────────────────────────────
@@ -409,315 +392,286 @@ export function enrichThreadOpenApi(
 
   // ── Request examples ─────────────────────────────────────────────────────
 
-  addJsonRequestExample(
-    document,
-    "/authentication/sign-in",
-    "post",
-    "demoSignIn",
-    "Demo sign-in",
-    { email: "demo@mailos.dev", password: "DemoPass123!" },
-    "Requires DEMO_LOGIN_ENABLED and seeded demo user.",
-  );
+  type ExampleTuple = readonly [
+    path: string,
+    method: "post" | "put" | "patch",
+    key: string,
+    summary: string,
+    value: unknown,
+    description?: string,
+  ];
 
-  addJsonRequestExample(
-    document,
-    "/queue/enqueue/email",
-    "post",
-    "queueThankYou",
-    "Queue a thank-you email",
-    {
-      mode: "send",
-      email: {
-        to: "friend@corsair.dev",
-        subject: "Thanks for the sync",
-        body: "Great chat today — I'll send the notes tomorrow.",
+  const REQUEST_EXAMPLES: readonly ExampleTuple[] = [
+    [
+      "/authentication/sign-in",
+      "post",
+      "demoSignIn",
+      "Demo sign-in",
+      { email: "demo@mailos.dev", password: "DemoPass123!" },
+      "Requires DEMO_LOGIN_ENABLED and seeded demo user.",
+    ],
+    [
+      "/queue/enqueue/email",
+      "post",
+      "queueThankYou",
+      "Queue a thank-you email",
+      {
+        mode: "send",
+        email: {
+          to: "friend@corsair.dev",
+          subject: "Thanks for the sync",
+          body: "Great chat today — I'll send the notes tomorrow.",
+        },
+        title: "Email to friend@corsair.dev",
       },
-      title: "Email to friend@corsair.dev",
-    },
-    "Returns pending item — approve via POST /queue/approve to send via Corsair Gmail.",
-  );
-
-  addJsonRequestExample(
-    document,
-    "/queue/enqueue/calendar",
-    "post",
-    "queueStandup",
-    "Queue a standup invite",
-    {
-      calendar: {
-        summary: "Team standup",
-        description: "Daily sync",
-        startDateTime: "2026-06-20T10:00:00",
-        endDateTime: "2026-06-20T10:30:00",
+      "Returns pending item — approve via POST /queue/approve to send via Corsair Gmail.",
+    ],
+    [
+      "/queue/enqueue/calendar",
+      "post",
+      "queueStandup",
+      "Queue a standup invite",
+      {
+        calendar: {
+          summary: "Team standup",
+          description: "Daily sync",
+          startDateTime: "2026-06-20T10:00:00",
+          endDateTime: "2026-06-20T10:30:00",
+          timeZone: "Asia/Kolkata",
+          attendeeEmails: ["teammate@company.com"],
+        },
+        title: "Team standup",
+      },
+      "Creates dashed block on calendar until approved.",
+    ],
+    [
+      "/queue/enqueue/quick-add",
+      "post",
+      "quickAddNatural",
+      "Quick-add via natural language",
+      { text: "Meeting with Sarah tomorrow 3pm for 1 hour" },
+    ],
+    [
+      "/queue/approve",
+      "post",
+      "approveItem",
+      "Approve a pending queue item",
+      { id: "00000000-0000-4000-8000-000000000001" },
+      "Use UUID from GET /queue/items.",
+    ],
+    [
+      "/calendar/events/quick-add",
+      "post",
+      "calendarQuickAdd",
+      "Quick-add (same as queue quick-add)",
+      { text: "Lunch with Alex Friday noon" },
+    ],
+    [
+      "/agent/chat",
+      "post",
+      "agentInboxQuery",
+      "Ask agent about inbox",
+      {
+        message: "What's urgent in my inbox today? Star the top one.",
+        history: [],
+      },
+    ],
+    [
+      "/agent/sessions",
+      "post",
+      "createSession",
+      "Create agent session with focus",
+      {
+        title: "Follow up on Q3 proposal",
+        focus: {
+          threadId: "THREAD_ID_FROM_GMAIL",
+          threadLabel: "Q3 proposal — Alex Chen",
+        },
+      },
+    ],
+    [
+      "/calendar/free-busy",
+      "post",
+      "checkAvailability",
+      "Check free/busy before scheduling",
+      {
+        startDateTime: "2026-06-20T14:00:00",
+        endDateTime: "2026-06-20T15:00:00",
         timeZone: "Asia/Kolkata",
-        attendeeEmails: ["teammate@company.com"],
       },
-      title: "Team standup",
-    },
-    "Creates dashed block on calendar until approved.",
-  );
-
-  addJsonRequestExample(
-    document,
-    "/queue/enqueue/quick-add",
-    "post",
-    "quickAddNatural",
-    "Quick-add via natural language",
-    { text: "Meeting with Sarah tomorrow 3pm for 1 hour" },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/queue/approve",
-    "post",
-    "approveItem",
-    "Approve a pending queue item",
-    { id: "00000000-0000-4000-8000-000000000001" },
-    "Use UUID from GET /queue/items.",
-  );
-
-  addJsonRequestExample(
-    document,
-    "/calendar/events/quick-add",
-    "post",
-    "calendarQuickAdd",
-    "Quick-add (same as queue quick-add)",
-    { text: "Lunch with Alex Friday noon" },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/agent/chat",
-    "post",
-    "agentInboxQuery",
-    "Ask agent about inbox",
-    {
-      message: "What's urgent in my inbox today? Star the top one.",
-      history: [],
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/agent/sessions",
-    "post",
-    "createSession",
-    "Create agent session with focus",
-    {
-      title: "Follow up on Q3 proposal",
-      focus: {
-        threadId: "THREAD_ID_FROM_GMAIL",
-        threadLabel: "Q3 proposal — Alex Chen",
+    ],
+    [
+      "/calendar/events/{eventId}/rsvp",
+      "post",
+      "rsvpAccept",
+      "Accept a meeting invite",
+      { eventId: "abc123", response: "accepted" },
+    ],
+    [
+      "/authentication/sign-up",
+      "post",
+      "signUp",
+      "Create account",
+      {
+        email: "you@example.com",
+        password: "SecurePass123!",
+        confirmPassword: "SecurePass123!",
+        turnstileToken: "TURNSTILE_TOKEN",
       },
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/calendar/free-busy",
-    "post",
-    "checkAvailability",
-    "Check free/busy before scheduling",
-    {
-      startDateTime: "2026-06-20T14:00:00",
-      endDateTime: "2026-06-20T15:00:00",
-      timeZone: "Asia/Kolkata",
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/calendar/events/{eventId}/rsvp",
-    "post",
-    "rsvpAccept",
-    "Accept a meeting invite",
-    { eventId: "abc123", response: "accepted" },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/authentication/sign-up",
-    "post",
-    "signUp",
-    "Create account",
-    {
-      email: "you@example.com",
-      password: "SecurePass123!",
-      confirmPassword: "SecurePass123!",
-      turnstileToken: "TURNSTILE_TOKEN",
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/queue/enqueue/draft-send",
-    "post",
-    "queueDraftSend",
-    "Queue sending an existing draft",
-    { draftId: "DRAFT_ID_FROM_GMAIL", title: "Send proposal draft" },
-    "Approve via POST /queue/approve → Corsair drafts.send.",
-  );
-
-  addJsonRequestExample(
-    document,
-    "/queue/enqueue/meeting",
-    "post",
-    "queueMeetingBundle",
-    "Queue meeting + email bundle",
-    {
-      calendar: {
-        summary: "Product review",
-        startDateTime: "2026-06-21T15:00:00",
-        endDateTime: "2026-06-21T16:00:00",
+    ],
+    [
+      "/queue/enqueue/draft-send",
+      "post",
+      "queueDraftSend",
+      "Queue sending an existing draft",
+      { draftId: "DRAFT_ID_FROM_GMAIL", title: "Send proposal draft" },
+      "Approve via POST /queue/approve → Corsair drafts.send.",
+    ],
+    [
+      "/queue/enqueue/meeting",
+      "post",
+      "queueMeetingBundle",
+      "Queue meeting + email bundle",
+      {
+        calendar: {
+          summary: "Product review",
+          startDateTime: "2026-06-21T15:00:00",
+          endDateTime: "2026-06-21T16:00:00",
+          timeZone: "Asia/Kolkata",
+          attendeeEmails: ["stakeholder@company.com"],
+        },
+        email: {
+          to: "stakeholder@company.com",
+          subject: "Product review — Friday 3pm",
+          body: "Calendar invite attached. See you then!",
+        },
+        title: "Product review meeting bundle",
+      },
+    ],
+    [
+      "/queue/dismiss",
+      "post",
+      "dismissItem",
+      "Dismiss a pending queue item",
+      { id: "00000000-0000-4000-8000-000000000002" },
+    ],
+    [
+      "/inbox/threads/batch-modify",
+      "post",
+      "batchArchive",
+      "Batch archive threads",
+      { threadIds: ["THREAD_ID_1", "THREAD_ID_2"], removeLabelIds: ["INBOX"] },
+    ],
+    [
+      "/inbox/drafts",
+      "post",
+      "createDraft",
+      "Create a Gmail draft",
+      {
+        to: "client@company.com",
+        subject: "Follow-up on proposal",
+        body: "Hi — following up on our conversation yesterday.",
+      },
+    ],
+    [
+      "/calendar/events",
+      "post",
+      "createEventDirect",
+      "Create event directly (prefer queue)",
+      {
+        summary: "1:1 with mentor",
+        startDateTime: "2026-06-22T11:00:00",
+        endDateTime: "2026-06-22T11:30:00",
         timeZone: "Asia/Kolkata",
-        attendeeEmails: ["stakeholder@company.com"],
       },
-      email: {
-        to: "stakeholder@company.com",
-        subject: "Product review — Friday 3pm",
-        body: "Calendar invite attached. See you then!",
-      },
-      title: "Product review meeting bundle",
-    },
-  );
+    ],
+    [
+      "/ai/inbox/rank",
+      "post",
+      "rankInbox",
+      "Rank inbox by urgency",
+      { maxResults: 20, autoLabel: true },
+    ],
+    [
+      "/contacts/upsert",
+      "post",
+      "upsertContact",
+      "Save contact",
+      { email: "alex@company.com", name: "Alex Chen", company: "Acme Corp" },
+    ],
+    [
+      "/settings/approval-defaults",
+      "put",
+      "enableAutoApproveAgent",
+      "Auto-approve agent emails",
+      { agentEmail: true, inboxEmail: false, calendarInvites: false },
+    ],
+    [
+      "/agent/sessions/{id}/turn",
+      "post",
+      "addTurn",
+      "Append message to session",
+      { role: "user", content: "Summarize this thread and draft a reply." },
+    ],
+  ];
 
-  addJsonRequestExample(
-    document,
-    "/queue/dismiss",
-    "post",
-    "dismissItem",
-    "Dismiss a pending queue item",
-    { id: "00000000-0000-4000-8000-000000000002" },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/inbox/threads/batch-modify",
-    "post",
-    "batchArchive",
-    "Batch archive threads",
-    { threadIds: ["THREAD_ID_1", "THREAD_ID_2"], removeLabelIds: ["INBOX"] },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/inbox/drafts",
-    "post",
-    "createDraft",
-    "Create a Gmail draft",
-    {
-      to: "client@company.com",
-      subject: "Follow-up on proposal",
-      body: "Hi — following up on our conversation yesterday.",
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/calendar/events",
-    "post",
-    "createEventDirect",
-    "Create event directly (prefer queue)",
-    {
-      summary: "1:1 with mentor",
-      startDateTime: "2026-06-22T11:00:00",
-      endDateTime: "2026-06-22T11:30:00",
-      timeZone: "Asia/Kolkata",
-    },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/ai/inbox/rank",
-    "post",
-    "rankInbox",
-    "Rank inbox by urgency",
-    { maxResults: 20, autoLabel: true },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/contacts/upsert",
-    "post",
-    "upsertContact",
-    "Save contact",
-    { email: "alex@company.com", name: "Alex Chen", company: "Acme Corp" },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/settings/approval-defaults",
-    "put",
-    "enableAutoApproveAgent",
-    "Auto-approve agent emails",
-    { agentEmail: true, inboxEmail: false, calendarInvites: false },
-  );
-
-  addJsonRequestExample(
-    document,
-    "/agent/sessions/{id}/turn",
-    "post",
-    "addTurn",
-    "Append message to session",
-    { role: "user", content: "Summarize this thread and draft a reply." },
-  );
+  for (const [path, method, key, summary, value, description] of REQUEST_EXAMPLES) {
+    addJsonRequestExample(document, path, method, key, summary, value, description);
+  }
 
   // ── curl code samples (Scalar x-codeSamples) ─────────────────────────────
 
-  const curlSamples: Array<{
-    path: string;
-    method: string;
-    label: string;
-    source: string;
-  }> = [
-    {
-      path: "/authentication/sign-in",
-      method: "post",
-      label: "Sign in (curl)",
-      source: String.raw`curl -X POST '${baseUrl}/api/authentication/sign-in' \
+  type CurlTuple = readonly [path: string, method: string, label: string, source: string];
+
+  const CURL_SAMPLES: readonly CurlTuple[] = [
+    [
+      "/authentication/sign-in",
+      "post",
+      "Sign in (curl)",
+      String.raw`curl -X POST '${baseUrl}/api/authentication/sign-in' \
   -H 'Content-Type: application/json' \
   -d '{"email":"demo@mailos.dev","password":"DemoPass123!","turnstileToken":""}' \
   -c cookies.txt`,
-    },
-    {
-      path: "/inbox/threads",
-      method: "get",
-      label: "List threads (cookie auth)",
-      source: String.raw`curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \
+    ],
+    [
+      "/inbox/threads",
+      "get",
+      "List threads (cookie auth)",
+      String.raw`curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \
   -b cookies.txt`,
-    },
-    {
-      path: "/queue/enqueue/email",
-      method: "post",
-      label: "Queue email (with CSRF)",
-      source: String.raw`curl -X POST '${baseUrl}/api/queue/enqueue/email' \
+    ],
+    [
+      "/queue/enqueue/email",
+      "post",
+      "Queue email (with CSRF)",
+      String.raw`curl -X POST '${baseUrl}/api/queue/enqueue/email' \
   -H 'Content-Type: application/json' \
   -H 'X-Thread-CSRF: 1' \
   -H 'Origin: ${clientUrl}' \
   -b cookies.txt \
   -d '{"mode":"send","email":{"to":"a@b.com","subject":"Hi","body":"Hello"},"title":"Test"}'`,
-    },
-    {
-      path: "/mcp",
-      method: "post",
-      label: "MCP tools/list",
-      source: String.raw`curl -X POST '${baseUrl}/mcp' \
+    ],
+    [
+      "/mcp",
+      "post",
+      "MCP tools/list",
+      String.raw`curl -X POST '${baseUrl}/mcp' \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
-    },
-    {
-      path: "/mcp/corsair",
-      method: "post",
-      label: "Corsair list_operations",
-      source: String.raw`curl -X POST '${baseUrl}/mcp/corsair' \
+    ],
+    [
+      "/mcp/corsair",
+      "post",
+      "Corsair list_operations",
+      String.raw`curl -X POST '${baseUrl}/mcp/corsair' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_MCP_KEY' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_operations","arguments":{}}}'`,
-    },
+    ],
   ];
 
-  for (const sample of curlSamples) {
-    addCodeSample(document, sample.path, sample.method, "curl", sample.label, sample.source);
+  for (const [path, method, label, source] of CURL_SAMPLES) {
+    addCodeSample(document, path, method, "curl", label, source);
   }
 
   // ── Query parameter documentation ────────────────────────────────────────
