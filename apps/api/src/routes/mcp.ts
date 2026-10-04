@@ -120,6 +120,12 @@ function toolResult(content: unknown) {
   };
 }
 
+function getString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Tool executor
 // ────────────────────────────────────────────────────────────────────────────
@@ -167,9 +173,9 @@ async function handleQueueEmailTool(args: Record<string, unknown>, userId: strin
 }
 
 async function handleQueueCalendarInviteTool(args: Record<string, unknown>, userId: string, queue: ReturnType<typeof getQueueService>) {
-  const summary = String(args.summary ?? "").trim();
-  const startDateTime = String(args.startDateTime ?? "").trim();
-  const endDateTime = String(args.endDateTime ?? "").trim();
+  const summary = getString(args.summary).trim();
+  const startDateTime = getString(args.startDateTime).trim();
+  const endDateTime = getString(args.endDateTime).trim();
   if (!summary || !startDateTime || !endDateTime) {
     return toolResult({ success: false, error: "summary, startDateTime, and endDateTime are required" });
   }
@@ -199,10 +205,10 @@ async function handleQueueCalendarInviteTool(args: Record<string, unknown>, user
 }
 
 async function handleRescheduleEventTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
-  const eventId = String(args.eventId ?? "").trim();
-  const startDateTime = String(args.startDateTime ?? "").trim();
-  const endDateTime = String(args.endDateTime ?? "").trim();
-  const timeZone = String(args.timeZone ?? "UTC").trim();
+  const eventId = getString(args.eventId).trim();
+  const startDateTime = getString(args.startDateTime).trim();
+  const endDateTime = getString(args.endDateTime).trim();
+  const timeZone = getString(args.timeZone, "UTC").trim();
   if (!eventId || !startDateTime || !endDateTime) {
     return toolResult({ success: false, error: "eventId, startDateTime, and endDateTime are required" });
   }
@@ -234,7 +240,7 @@ async function handleRescheduleEventTool(args: Record<string, unknown>, userId: 
 }
 
 async function handleCancelEventTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
-  const eventId = String(args.eventId ?? "").trim();
+  const eventId = getString(args.eventId).trim();
   if (!eventId) return toolResult({ success: false, error: "eventId is required" });
   const existing = await calendar.getEvent(userId, eventId);
   const item = await queue.enqueueCalendarDelete(
@@ -261,11 +267,11 @@ async function handleCancelEventTool(args: Record<string, unknown>, userId: stri
 }
 
 async function handleUpdateEventDetailsTool(args: Record<string, unknown>, userId: string, calendar: ReturnType<typeof getCalendarService>, queue: ReturnType<typeof getQueueService>) {
-  const eventId = String(args.eventId ?? "").trim();
+  const eventId = getString(args.eventId).trim();
   if (!eventId) return toolResult({ success: false, error: "eventId is required" });
-  const newSummary = args.summary ? String(args.summary).trim() : undefined;
-  const description = args.description ? String(args.description) : undefined;
-  const location = args.location ? String(args.location) : undefined;
+  const newSummary = typeof args.summary === "string" ? args.summary.trim() : undefined;
+  const description = typeof args.description === "string" ? args.description : undefined;
+  const location = typeof args.location === "string" ? args.location : undefined;
   if (!newSummary && !description && !location) {
     return toolResult({ success: false, error: "At least one of summary, description, or location is required" });
   }
@@ -322,12 +328,12 @@ async function handleQueueTools(
       );
     }
     case "approve_queue_item": {
-      const itemId = String(args.itemId ?? "");
+      const itemId = getString(args.itemId).trim();
       const result = await queue.approve(userId, itemId);
       return toolResult({ ok: true, itemId, status: result.status });
     }
     case "dismiss_queue_item": {
-      const itemId = String(args.itemId ?? "");
+      const itemId = getString(args.itemId).trim();
       await queue.dismiss(userId, itemId);
       return toolResult({ ok: true, itemId });
     }
@@ -342,13 +348,13 @@ async function handleQueueTools(
     case "update_event_details":
       return handleUpdateEventDetailsTool(args, userId, calendar, queue);
     case "quick_add_event": {
-      const text = String(args.text ?? "");
+      const text = getString(args.text);
       if (!text.trim()) return toolResult({ error: "text is required" });
       const item = await queue.enqueueQuickAddCalendar(userId, { text }, { origin: "agent" });
       return toolResult({ ok: true, queued: item.status !== "approved", item });
     }
     case "send_draft": {
-      const draftId = String(args.draftId ?? "");
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return toolResult({ error: "draftId is required" });
       const item = await queue.enqueueDraftSend(userId, { draftId }, { origin: "agent" });
       return toolResult({ ok: true, queued: item.status !== "approved", item });
@@ -394,8 +400,8 @@ async function handleRespondToEventTool(
   userId: string,
   calendar: ReturnType<typeof getCalendarService>,
 ) {
-  const eventId = String(args.eventId ?? "").trim();
-  const responseRaw = String(args.response ?? "").trim().toLowerCase();
+  const eventId = getString(args.eventId).trim();
+  const responseRaw = getString(args.response).trim().toLowerCase();
   const response = responseRaw as "accepted" | "declined" | "tentative";
   if (!eventId || !["accepted", "declined", "tentative"].includes(response)) {
     return toolResult({ success: false, error: "eventId and response (accepted/declined/tentative) are required" });
@@ -414,9 +420,9 @@ async function handleCalendarTools(
     case "list_calendar_events":
       return handleListCalendarEventsTool(args, userId, calendar);
     case "check_free_busy": {
-      const startDateTime = String(args.startDateTime ?? "").trim();
-      const endDateTime = String(args.endDateTime ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const startDateTime = getString(args.startDateTime).trim();
+      const endDateTime = getString(args.endDateTime).trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       if (!startDateTime || !endDateTime) {
         return toolResult({ success: false, error: "startDateTime and endDateTime are required" });
       }
@@ -425,7 +431,7 @@ async function handleCalendarTools(
     case "respond_to_event":
       return handleRespondToEventTool(args, userId, calendar);
     case "get_calendar_event": {
-      const eventId = String(args.eventId ?? "").trim();
+      const eventId = getString(args.eventId).trim();
       if (!eventId) return toolResult({ success: false, error: "eventId is required" });
       const event = await calendar.getEvent(userId, eventId);
       if (!event) return toolResult({ success: false, error: "Event not found or calendar not connected" });
@@ -472,18 +478,18 @@ async function handleFindMeetingSlotsTool(args: Record<string, unknown>, userId:
   const result = await findMeetingSlots({
     tenantId: userId,
     durationMinutes: Math.max(15, Math.min(480, Number(args.durationMinutes ?? 30))),
-    preferredStartDate: args.preferredStartDate ? String(args.preferredStartDate) : undefined,
-    preferredEndDate: args.preferredEndDate ? String(args.preferredEndDate) : undefined,
-    timeZone: args.timeZone ? String(args.timeZone) : undefined,
-    attendeeEmail: args.attendeeEmail ? String(args.attendeeEmail) : undefined,
-    context: args.context ? String(args.context) : undefined,
+    preferredStartDate: typeof args.preferredStartDate === "string" ? args.preferredStartDate : undefined,
+    preferredEndDate: typeof args.preferredEndDate === "string" ? args.preferredEndDate : undefined,
+    timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined,
+    attendeeEmail: typeof args.attendeeEmail === "string" ? args.attendeeEmail : undefined,
+    context: typeof args.context === "string" ? args.context : undefined,
   });
   return toolResult(result);
 }
 
 async function handleContactIntelTool(args: Record<string, unknown>, userId: string) {
-  const email = String(args.email ?? "").trim();
-  const contactName = args.name ? String(args.name).trim() : undefined;
+  const email = getString(args.email).trim();
+  const contactName = typeof args.name === "string" ? args.name.trim() : undefined;
   if (!email) return toolResult({ success: false, error: "email is required" });
   const intel = await getContactIntel({ tenantId: userId, email, name: contactName });
   return toolResult(intel);
@@ -503,30 +509,30 @@ async function handleAiTools(
       return toolResult(await generateDailyBrief({ tenantId: userId, timeZone }));
     }
     case "get_smart_replies": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return toolResult({ success: false, error: "threadId is required" });
       return toolResult(await getSmartReplies({ tenantId: userId, threadId }));
     }
     case "get_meeting_prep": {
-      const eventId = String(args.eventId ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const eventId = getString(args.eventId).trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       if (!eventId) return toolResult({ success: false, error: "eventId is required" });
       return toolResult(await getMeetingPrep({ tenantId: userId, eventId, timeZone }));
     }
     case "get_thread_context": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return toolResult({ success: false, error: "threadId is required" });
       return toolResult(await getThreadContext({ tenantId: userId, threadId }));
     }
     case "get_missed_followups": {
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       const followups = await getMissedFollowUps({ tenantId: userId, timeZone });
       return toolResult({ followups, count: followups.length });
     }
     case "get_contact_intel":
       return handleContactIntelTool(args, userId);
     case "summarize_thread": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return toolResult({ success: false, error: "threadId is required" });
       return toolResult(await summarizeThread({ tenantId: userId, threadId }));
     }
@@ -542,17 +548,17 @@ async function handleCreateDraftTool(
   userId: string,
   inbox: ReturnType<typeof getInboxService>,
 ) {
-  const to = String(args.to ?? "").trim();
-  const subject = String(args.subject ?? "").trim();
-  const body = String(args.body ?? "").trim();
+  const to = getString(args.to).trim();
+  const subject = getString(args.subject).trim();
+  const body = getString(args.body).trim();
   if (!to || !subject || !body) return toolResult({ success: false, error: "to, subject, and body are required" });
   const draft = await inbox.createDraft(userId, {
     to,
     subject,
     body,
-    threadId: args.threadId ? String(args.threadId) : undefined,
-    cc: args.cc ? String(args.cc) : undefined,
-    bcc: args.bcc ? String(args.bcc) : undefined,
+    threadId: typeof args.threadId === "string" ? args.threadId : undefined,
+    cc: typeof args.cc === "string" ? args.cc : undefined,
+    bcc: typeof args.bcc === "string" ? args.bcc : undefined,
   });
   return toolResult({ success: true, draftId: draft.id, subject, to });
 }
@@ -562,10 +568,10 @@ async function handleUpdateDraftTool(
   userId: string,
   inbox: ReturnType<typeof getInboxService>,
 ) {
-  const draftId = String(args.draftId ?? "");
-  const to = String(args.to ?? "");
-  const subject = String(args.subject ?? "");
-  const body = String(args.body ?? "");
+  const draftId = getString(args.draftId).trim();
+  const to = getString(args.to).trim();
+  const subject = getString(args.subject).trim();
+  const body = getString(args.body).trim();
   if (!draftId || !to || !subject) return toolResult({ error: "draftId, to, and subject are required" });
   const result = await inbox.updateDraft(userId, draftId, {
     to, subject, body,
@@ -584,7 +590,7 @@ async function handleDraftTools(
 ): Promise<{ content: Array<{ type: string; text: string }> } | null> {
   switch (name) {
     case "delete_draft": {
-      const draftId = String(args.draftId ?? "").trim();
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return toolResult({ success: false, error: "draftId is required" });
       await inbox.deleteDraft(userId, draftId);
       return toolResult({ success: true, draftId, action: "deleted" });
@@ -594,7 +600,7 @@ async function handleDraftTools(
       return toolResult(await inbox.listDrafts(userId, { maxResults }));
     }
     case "get_draft": {
-      const draftId = String(args.draftId ?? "").trim();
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return toolResult({ success: false, error: "draftId is required" });
       const draft = await inbox.getDraft(userId, draftId);
       if (!draft) return toolResult({ success: false, error: "Draft not found" });
@@ -681,12 +687,12 @@ async function handleEmailQueryTools(
       return listOrSearchThreads(inbox, userId, { maxResults, query });
     }
     case "search_inbox": {
-      const query = String(args.query ?? "");
+      const query = getString(args.query);
       const maxResults = Math.min(Number(args.maxResults ?? 10), 50);
       return listOrSearchThreads(inbox, userId, { maxResults, query });
     }
     case "get_thread": {
-      const threadId = String(args.threadId ?? "");
+      const threadId = getString(args.threadId).trim();
       const thread = await inbox.getThread(userId, threadId);
       if (!thread) return toolResult({ error: "Thread not found" });
       return toolResult(thread);
@@ -783,8 +789,8 @@ async function handleSingleLabelTool(
   inbox: ReturnType<typeof getInboxService>,
 ): Promise<{ content: Array<{ type: string; text: string }> } | null> {
   if (name !== "apply_label" && name !== "remove_label") return null;
-  const threadId = String(args.threadId ?? "").trim();
-  const labelId = String(args.labelId ?? "").trim();
+  const threadId = getString(args.threadId).trim();
+  const labelId = getString(args.labelId).trim();
   if (!threadId || !labelId) return toolResult({ success: false, error: "threadId and labelId are required" });
   if (name === "apply_label") {
     await inbox.applyLabel(userId, threadId, labelId);
@@ -814,7 +820,7 @@ async function handleModifyMessageTool(
   userId: string,
   inbox: ReturnType<typeof getInboxService>,
 ) {
-  const messageId = String(args.messageId ?? "");
+  const messageId = getString(args.messageId).trim();
   if (!messageId) return toolResult({ error: "messageId is required" });
   await inbox.modifyMessage(userId, messageId, {
     addLabelIds: parseOptionalStringArray(args.addLabelIds),
@@ -842,7 +848,7 @@ async function handleEmailMutationTools(
   userId: string,
   inbox: ReturnType<typeof getInboxService>,
 ): Promise<{ content: Array<{ type: string; text: string }> } | null> {
-  const threadId = String(args.threadId ?? "").trim();
+  const threadId = getString(args.threadId).trim();
   const statusResult = await handleThreadStatusTools(name, threadId, userId, inbox);
   if (statusResult) return statusResult;
   return handleEmailLabelTools(name, args, userId, inbox);

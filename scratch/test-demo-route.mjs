@@ -20,17 +20,23 @@ function requestPromise(urlStr, headers = {}) {
   });
 }
 
+function formatCookieHeader(cookies) {
+  if (Array.isArray(cookies)) {
+    return cookies.map((c) => c.split(";")[0]).join("; ");
+  }
+  if (cookies) {
+    return cookies.split(";")[0];
+  }
+  return "";
+}
+
 async function run() {
   const demoRes = await requestPromise("http://localhost:3000/api-auth/demo?next=/inbox");
   console.log("DEMO RES STATUS:", demoRes.status);
   const setCookies = demoRes.headers["set-cookie"];
   console.log("DEMO SET-COOKIES:", setCookies);
 
-  const cookieHeader = Array.isArray(setCookies)
-    ? setCookies.map((c) => c.split(";")[0]).join("; ")
-    : setCookies
-      ? setCookies.split(";")[0]
-      : "";
+  const cookieHeader = formatCookieHeader(setCookies);
   console.log("FORWARDING COOKIE:", cookieHeader);
 
   const apiMeRes = await requestPromise("http://127.0.0.1:8000/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D", {
@@ -46,4 +52,8 @@ async function run() {
   console.log("WEB PROXIED /trpc/auth.me STATUS:", webMeRes.status, "BODY:", webMeRes.body);
 }
 
-run().catch(console.error);
+try {
+  await run();
+} catch (error) {
+  console.error(error);
+}

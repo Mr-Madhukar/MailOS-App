@@ -1,6 +1,5 @@
 import type { Request } from "express";
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { usersTable } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 

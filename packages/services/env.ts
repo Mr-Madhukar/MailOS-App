@@ -6,13 +6,18 @@ import { z } from "zod";
 
 import { fileURLToPath } from "node:url";
 
+function getCurrentDir(): string {
+  if (typeof __dirname !== "undefined") {
+    return __dirname;
+  }
+  if (import.meta?.url) {
+    return path.dirname(fileURLToPath(import.meta.url));
+  }
+  return process.cwd();
+}
+
 function loadRootEnv() {
-  const currentDir =
-    typeof __dirname !== "undefined"
-      ? __dirname
-      : typeof import.meta !== "undefined" && import.meta.url
-        ? path.dirname(fileURLToPath(import.meta.url))
-        : process.cwd();
+  const currentDir = getCurrentDir();
   let dir = currentDir;
   for (let i = 0; i < 6; i++) {
     const envPath = path.join(dir, ".env");

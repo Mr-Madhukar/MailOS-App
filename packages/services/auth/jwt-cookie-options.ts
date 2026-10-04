@@ -1,18 +1,27 @@
 import { env } from "../env";
 
+function resolveSameSite(explicitSame?: string): "none" | "lax" | "strict" {
+  if (explicitSame === "none" || explicitSame === "lax" || explicitSame === "strict") {
+    return explicitSame;
+  }
+  if (env.NODE_ENV === "production" || env.NODE_ENV === "prod" || env.JWT_COOKIE_SAMESITE === "none") {
+    return "none";
+  }
+  return "lax";
+}
+
 export function getJwtCookieOptions() {
   const explicitSame = env.JWT_COOKIE_SAMESITE?.toLowerCase();
-  const sameSite =
-    explicitSame === "none" || explicitSame === "lax" || explicitSame === "strict"
-      ? explicitSame
-      : env.NODE_ENV === "production" || env.NODE_ENV === "prod" || env.JWT_COOKIE_SAMESITE === "none"
-        ? "none"
-        : "lax";
+  const sameSite = resolveSameSite(explicitSame);
 
   let secure: boolean;
-  if (env.JWT_COOKIE_SECURE === "true") secure = true;
-  else if (env.JWT_COOKIE_SECURE === "false") secure = false;
-  else secure = sameSite === "none" ? true : env.NODE_ENV === "production" || env.NODE_ENV === "prod";
+  if (env.JWT_COOKIE_SECURE === "true") {
+    secure = true;
+  } else if (env.JWT_COOKIE_SECURE === "false") {
+    secure = false;
+  } else {
+    secure = sameSite === "none" || env.NODE_ENV === "production" || env.NODE_ENV === "prod";
+  }
 
   return {
     httpOnly: true,

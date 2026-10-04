@@ -125,12 +125,14 @@ export function toPrometheusText(): string {
 
   for (const s of snaps) {
     const label = `route="${s.route}"`;
-    lines.push(`thread_requests_total{${label}} ${s.requests}`);
-    lines.push(`thread_requests_ok{${label}} ${s.ok}`);
-    lines.push(`thread_requests_error{${label}} ${s.clientError + s.serverError}`);
-    lines.push(`thread_latency_p50_ms{${label}} ${s.p50Ms}`);
-    lines.push(`thread_latency_p95_ms{${label}} ${s.p95Ms}`);
-    lines.push(`thread_latency_p99_ms{${label}} ${s.p99Ms}`);
+    lines.push(
+      `thread_requests_total{${label}} ${s.requests}`,
+      `thread_requests_ok{${label}} ${s.ok}`,
+      `thread_requests_error{${label}} ${s.clientError + s.serverError}`,
+      `thread_latency_p50_ms{${label}} ${s.p50Ms}`,
+      `thread_latency_p95_ms{${label}} ${s.p95Ms}`,
+      `thread_latency_p99_ms{${label}} ${s.p99Ms}`,
+    );
   }
 
   lines.push("");

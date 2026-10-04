@@ -20,14 +20,21 @@ async function main() {
   console.log("Corsair tables in DB:");
   console.log(tablesRes.rows.map(r => r.table_name));
 
-  for (const row of tablesRes.rows) {
-    const columnsRes = await pool.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = $1;
-    `, [row.table_name]);
-    console.log(`\nColumns for ${row.table_name}:`);
-    console.log(columnsRes.rows.map(c => `${c.column_name} (${c.data_type})`).join(', '));
+  const columnsRes = await pool.query(`
+    SELECT table_name, column_name, data_type 
+    FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name LIKE 'corsair_%'
+    ORDER BY table_name, ordinal_position;
+  `);
+  const columnsByTable = new Map();
+  for (const col of columnsRes.rows) {
+    const list = columnsByTable.get(col.table_name) ?? [];
+    list.push(`${col.column_name} (${col.data_type})`);
+    columnsByTable.set(col.table_name, list);
+  }
+  for (const [tableName, cols] of columnsByTable) {
+    console.log(`\nColumns for ${tableName}:`);
+    console.log(cols.join(', '));
   }
 
   // Check row count only — avoid selecting or logging sensitive account data
