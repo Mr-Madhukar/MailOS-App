@@ -29,12 +29,14 @@ export async function getSharedCountersMerged(): Promise<Record<string, number>>
     return merged;
   }
 
-  for (const name of Object.keys(merged)) {
-    const remote = await cacheGet(counterRedisKey(name));
-    if (remote) {
-      merged[name] = Number.parseInt(remote, 10) || merged[name] || 0;
-    }
-  }
+  await Promise.all(
+    Object.keys(merged).map(async (name) => {
+      const remote = await cacheGet(counterRedisKey(name));
+      if (remote) {
+        merged[name] = Number.parseInt(remote, 10) || merged[name] || 0;
+      }
+    }),
+  );
 
   return merged;
 }

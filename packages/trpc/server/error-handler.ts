@@ -4,8 +4,17 @@ import { logger } from "@repo/logger";
 export function sanitizeTrpcError(error: unknown): never {
   if (error instanceof TRPCError) throw error;
 
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : typeof error === "object" && error !== null
+          ? JSON.stringify(error)
+          : "Unknown error";
+
   logger.error("Unhandled tRPC error", {
-    message: error instanceof Error ? error.message : String(error),
+    message,
     stack: error instanceof Error ? error.stack : undefined,
   });
 

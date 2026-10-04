@@ -84,9 +84,9 @@ function decodeOAuthState(state: string | undefined) {
     const raw = Buffer.from(state, "base64url").toString("utf8");
     const parsed = z
       .object({
-        nonce: z.string().uuid(),
+        nonce: z.uuid(),
         returnTo: z.string().default("/inbox"),
-        redirectUri: z.string().url().optional(),
+        redirectUri: z.url().optional(),
       })
       .safeParse(JSON.parse(raw));
     if (!parsed.success) return null;

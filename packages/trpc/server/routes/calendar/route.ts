@@ -133,7 +133,7 @@ export const calendarRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         if (Number.isNaN(Date.parse(input.startDateTime)) || Number.isNaN(Date.parse(input.endDateTime))) {
-          throw new Error("Invalid ISO date/time");
+          throw new TypeError("Invalid ISO date/time");
         }
         if (Date.parse(input.endDateTime) <= Date.parse(input.startDateTime)) {
           throw new Error("End date/time must be after start date/time");
@@ -198,7 +198,7 @@ export const calendarRouter = router({
         startDateTime: isoDateTimeSchema,
         endDateTime: isoDateTimeSchema,
         timeZone: z.string().max(64).optional(),
-        attendeeEmails: z.array(z.string().email()).max(20).optional(),
+        attendeeEmails: z.array(z.email()).max(20).optional(),
         allDay: z.boolean().optional(),
         /** Auto-add a Google Meet video conference link. Defaults to true when attendees provided. */
         addGoogleMeet: z.boolean().optional(),
@@ -209,7 +209,7 @@ export const calendarRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         if (Number.isNaN(Date.parse(input.startDateTime)) || Number.isNaN(Date.parse(input.endDateTime))) {
-          throw new Error("Invalid ISO date/time");
+          throw new TypeError("Invalid ISO date/time");
         }
         if (Date.parse(input.endDateTime) <= Date.parse(input.startDateTime)) {
           throw new Error("End date/time must be after start date/time");
@@ -260,7 +260,7 @@ export const calendarRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         if (Number.isNaN(Date.parse(input.startDateTime)) || Number.isNaN(Date.parse(input.endDateTime))) {
-          throw new Error("Invalid ISO date/time");
+          throw new TypeError("Invalid ISO date/time");
         }
         if (Date.parse(input.endDateTime) <= Date.parse(input.startDateTime)) {
           throw new Error("End date/time must be after start date/time");

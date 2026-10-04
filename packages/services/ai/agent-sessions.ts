@@ -145,7 +145,7 @@ export async function updateAgentSession(
   if (!existing) return null;
 
   const messages = patch.messages ?? existing.messages;
-  const title = patch.title !== undefined ? patch.title : existing.title ?? deriveSessionTitle(messages);
+  const title = patch.title ?? existing.title ?? deriveSessionTitle(messages);
 
   let focus: AgentSessionFocus;
   if (patch.focus === null) {

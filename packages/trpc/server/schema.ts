@@ -1,6 +1,6 @@
 import { z } from "zod";
 
 /** Empty input for no-arg procedures — must be a ZodObject for OpenAPI / Scalar. */
-export const zodUndefinedModel = z.object({}).passthrough();
+export const zodUndefinedModel = z.looseObject({});
 
 export { z };

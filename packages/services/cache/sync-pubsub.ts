@@ -34,7 +34,7 @@ export function subscribeSyncPubSub(tenantId: string, listener: SyncListener): (
 
   return () => {
     set?.delete(listener);
-    if (set && set.size === 0) {
+    if (set?.size === 0) {
       listeners.delete(tenantId);
     }
   };

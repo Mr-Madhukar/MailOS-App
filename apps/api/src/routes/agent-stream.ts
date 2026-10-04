@@ -25,7 +25,7 @@ const toolMemoryEntrySchema = z.object({
 
 const agentStreamBodySchema = z.object({
   message: z.string().trim().min(1, "message is required").max(4000),
-  sessionId: z.string().uuid().optional(),
+  sessionId: z.uuid().optional(),
   history: z
     .array(
       z.object({
@@ -36,7 +36,7 @@ const agentStreamBodySchema = z.object({
     .max(24)
     .optional(),
   toolMemory: z.array(toolMemoryEntrySchema).max(12).optional(),
-  userEmail: z.string().email().optional(),
+  userEmail: z.email().optional(),
   focusThreadId: z.string().trim().min(1).max(128).optional(),
   focusEventId: z.string().trim().min(1).max(256).optional(),
   focusThreadLabel: z.string().trim().min(1).max(200).optional(),
@@ -205,7 +205,7 @@ agentStreamRouter.post("/", async (req: Request, res: Response) => {
     }
 
     if (result.actions.some((a) => a.kind === "email_queued" || a.kind === "calendar_queued")) {
-      invalidateBriefCache(user.id);
+      await invalidateBriefCache(user.id);
     }
 
     send("complete", {

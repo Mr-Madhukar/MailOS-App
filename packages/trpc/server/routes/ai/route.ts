@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { and, eq } from "@repo/database";
-import db from "@repo/database";
+import db, { and, eq } from "@repo/database";
 import { briefDismissalsTable, briefCacheTable } from "@repo/database/schema";
 
 import { dailyBriefSchema, generateDailyBrief, isInboxAiConfigured, analyzeInboxThreads } from "@repo/services/ai";
@@ -268,7 +267,7 @@ export const aiRouter = router({
   /** Contact intelligence — relationship summary for an email contact via Corsair Gmail + OpenAI. */
   contactIntel: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/contact-intel"), tags: TAGS } })
-    .input(z.object({ email: z.string().email(), name: z.string().optional() }))
+    .input(z.object({ email: z.email(), name: z.string().optional() }))
     .output(contactIntelSchema)
     .query(async ({ ctx, input }) => {
       try {
@@ -309,7 +308,7 @@ export const aiRouter = router({
         preferredStartDate: z.string().optional(),
         preferredEndDate: z.string().optional(),
         timeZone: z.string().max(64).optional(),
-        attendeeEmail: z.string().email().optional(),
+        attendeeEmail: z.email().optional(),
         context: z.string().max(200).optional(),
       }),
     )

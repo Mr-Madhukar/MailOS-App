@@ -18,9 +18,9 @@ export const emailQueuePayloadSchema = z.object({
   body: emailBodySchema,
   threadId: z.string().optional(),
   /** Optional CC recipient (single address for now — comma-separated multi not yet supported). */
-  cc: z.string().email().optional(),
+  cc: z.email().optional(),
   /** Optional BCC recipient (kept server-side; never shown in previews to the user). */
-  bcc: z.string().email().optional(),
+  bcc: z.email().optional(),
   attachments: z.array(emailAttachmentSchema).max(5).optional(),
 });
 
@@ -36,7 +36,7 @@ export const calendarQueuePayloadSchema = z
       message: "Invalid end date/time",
     }),
     timeZone: z.string().max(64).optional(),
-    attendeeEmails: z.array(z.string().email()).max(20).optional(),
+    attendeeEmails: z.array(z.email()).max(20).optional(),
     allDay: z.boolean().optional(),
     /** Google Calendar RRULE strings, e.g. ["RRULE:FREQ=WEEKLY"] */
     recurrence: z.array(z.string().max(200)).max(5).optional(),
@@ -91,7 +91,7 @@ export const meetingBundlePayloadSchema = z.object({
 });
 
 export const queueItemSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   kind: z.enum(["email_send", "email_draft", "draft_send", "calendar_invite", "meeting_bundle", "calendar_archive", "calendar_delete", "calendar_update"]),
   title: z.string(),
   preview: z.string().optional(),

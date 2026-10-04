@@ -40,16 +40,14 @@ function getDemoCredentials() {
   };
 }
 
-async function queryWithRetry<T>(fn: () => Promise<T>, retries = 8): Promise<T> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
-    }
+async function queryWithRetry<T>(fn: () => Promise<T>, retries = 8, attempt = 0): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (attempt >= retries - 1) throw err;
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    return queryWithRetry(fn, retries, attempt + 1);
   }
-  throw new Error("Query failed after retries");
 }
 
 /**
@@ -268,7 +266,7 @@ export const authRouter = router({
 
   me: protectedProcedure
     .meta({ openapi: { method: "GET", path: getPath("/me"), tags: TAGS, protect: true } })
-    .input(z.object({}).passthrough().optional())
+    .input(z.looseObject({}).optional())
     .output(authUserSchema)
     .query(({ ctx }) => ctx.user),
 

@@ -149,7 +149,7 @@ export type ValidatedEmailArgs = {
  * the tool result returned to the LLM is a structured error, not a crash.
  */
 export function validateAgentEmailArgs(args: Record<string, unknown>): ValidatedEmailArgs {
-  const toResult = recipientSchema.safeParse(String(args.to ?? ""));
+  const toResult = recipientSchema.safeParse(typeof args.to === "string" ? args.to : "");
   if (!toResult.success) {
     throw new ServiceError(
       "BAD_REQUEST",
@@ -157,7 +157,7 @@ export function validateAgentEmailArgs(args: Record<string, unknown>): Validated
     );
   }
 
-  const subjectResult = subjectSchema.safeParse(String(args.subject ?? ""));
+  const subjectResult = subjectSchema.safeParse(typeof args.subject === "string" ? args.subject : "");
   if (!subjectResult.success) {
     throw new ServiceError(
       "BAD_REQUEST",
@@ -165,7 +165,7 @@ export function validateAgentEmailArgs(args: Record<string, unknown>): Validated
     );
   }
 
-  const bodyResult = bodySchema.safeParse(String(args.body ?? ""));
+  const bodyResult = bodySchema.safeParse(typeof args.body === "string" ? args.body : "");
   if (!bodyResult.success) {
     throw new ServiceError(
       "BAD_REQUEST",

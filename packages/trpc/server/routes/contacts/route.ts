@@ -9,8 +9,8 @@ const TAGS = ["Contacts"];
 const getPath = generatePath("/contacts");
 
 const contactSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string().email(),
+  id: z.uuid(),
+  email: z.email(),
   displayName: z.string().optional(),
   handle: z.string(),
   source: z.enum(["manual", "inbox", "sent", "agent"]),
@@ -41,7 +41,7 @@ export const contactsRouter = router({
     .meta({ openapi: { method: "POST", path: getPath("/upsert"), tags: TAGS } })
     .input(
       z.object({
-        email: z.string().trim().email().max(320),
+        email: z.email().trim().max(320),
         displayName: z.string().trim().max(120).optional(),
       }),
     )

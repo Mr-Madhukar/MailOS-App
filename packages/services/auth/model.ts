@@ -6,7 +6,7 @@ export const authUserSchema = z.object({
   id: z.string(),
   fullName: z.string(),
   displayName: z.preprocess((v) => v ?? null, z.string().nullable()),
-  email: z.string().email(),
+  email: z.email(),
   emailVerified: z.boolean(),
   profileImageUrl: z.preprocess((v) => v ?? null, z.string().nullable()),
   twoFactorEnabled: z.boolean(),
@@ -16,7 +16,7 @@ export const authUserSchema = z.object({
 export const signInOutputSchema = z.union([
   z.object({
     twoFactorRequired: z.literal(true),
-    email: z.string().email(),
+    email: z.email(),
     message: z.string(),
   }),
   z.object({
@@ -31,7 +31,7 @@ export const messageOutputSchema = z.object({
 
 export const signUpOutputSchema = z.object({
   message: z.string(),
-  email: z.string().email(),
+  email: z.email(),
 });
 
 export type AuthUser = z.infer<typeof authUserSchema>;

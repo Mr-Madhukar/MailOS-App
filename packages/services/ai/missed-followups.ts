@@ -133,75 +133,76 @@ export async function getMissedFollowUps(input: {
 
   if (meetings.length === 0) return [];
 
-  const results: MissedFollowUp[] = [];
+  // Check each meeting concurrently (limit to 5 to avoid too many API calls)
+  const candidateEvents = meetings.slice(0, 5);
+  const checked = await Promise.all(
+    candidateEvents.map(async (event): Promise<MissedFollowUp | null> => {
+      const attendeeEmails = (event.attendees ?? [])
+        .map((a) => extractEmailAddress(a.email ?? "") ?? a.email ?? "")
+        .filter((e) => e && normalizeEmail(e) !== userEmail)
+        .slice(0, 3);
 
-  // Check each meeting (limit to 5 to avoid too many API calls)
-  for (const event of meetings.slice(0, 5)) {
-    const attendeeEmails = (event.attendees ?? [])
-      .map((a) => extractEmailAddress(a.email ?? "") ?? a.email ?? "")
-      .filter((e) => e && normalizeEmail(e) !== userEmail)
-      .slice(0, 3);
+      if (attendeeEmails.length === 0) return null;
 
-    if (attendeeEmails.length === 0) continue;
+      const eventEndIso = event.end ?? event.start;
+      const gmailDateStr = toGmailDate(eventEndIso ?? sevenDaysAgo);
+      if (!gmailDateStr) return null;
 
-    const eventEndIso = event.end ?? event.start;
-    const gmailDateStr = toGmailDate(eventEndIso ?? sevenDaysAgo);
-    if (!gmailDateStr) continue;
+      // Corsair Gmail: check if user sent follow-up after meeting
+      const toClause = attendeeEmails.map((e) => `to:${e}`).join(" OR ");
+      const searchQuery = `in:sent after:${gmailDateStr} (${toClause})`;
 
-    // Corsair Gmail: check if user sent follow-up after meeting
-    const toClause = attendeeEmails.map((e) => `to:${e}`).join(" OR ");
-    const searchQuery = `in:sent after:${gmailDateStr} (${toClause})`;
+      let sentCount = 0;
+      try {
+        const sentResult = await inbox.listThreads(input.tenantId, {
+          maxResults: 3,
+          query: searchQuery,
+        });
+        sentCount = sentResult.threads.length;
+      } catch {
+        return null;
+      }
 
-    let sentCount = 0;
-    try {
-      const sentResult = await inbox.listThreads(input.tenantId, {
-        maxResults: 3,
-        query: searchQuery,
+      // No follow-up sent → this is a miss
+      if (sentCount > 0) return null;
+
+      const daysAgo = daysSince(event.start) ?? 0;
+      if (daysAgo < 1) return null; // Skip today's meetings
+
+      const attendeeNames = (event.attendees ?? [])
+        .filter((a) => normalizeEmail(a.email) !== userEmail)
+        .map((a) => a.displayName?.trim() || a.email?.split("@")[0] || "")
+        .filter(Boolean)
+        .slice(0, 3);
+
+      const defaultPrompt = buildFollowUpAgentPrompt({
+        summary: event.summary ?? "Meeting",
+        attendeeNames,
+        attendeeEmails,
+        eventDate: event.start ?? sevenDaysAgo,
       });
-      sentCount = sentResult.threads.length;
-    } catch {
-      continue;
-    }
 
-    // No follow-up sent → this is a miss
-    if (sentCount > 0) continue;
+      const defaultSubject = buildFollowUpSuggestedSubject(event.summary ?? "Meeting");
 
-    const daysAgo = daysSince(event.start) ?? 0;
-    if (daysAgo < 1) continue; // Skip today's meetings
+      // Enrich with AI (non-blocking — use defaults on failure)
+      const ai: AIFollowUpSuggestion = await enrichWithAI({
+        summary: event.summary ?? "Meeting",
+        attendeeNames,
+        daysAgo,
+      }).catch(() => ({ subject: undefined, agentPrompt: undefined }));
 
-    const attendeeNames = (event.attendees ?? [])
-      .filter((a) => normalizeEmail(a.email) !== userEmail)
-      .map((a) => a.displayName?.trim() || a.email?.split("@")[0] || "")
-      .filter(Boolean)
-      .slice(0, 3);
+      return {
+        eventId: event.id,
+        eventSummary: event.summary?.trim() || "Meeting",
+        eventDate: event.start ?? "",
+        attendeeNames,
+        attendeeEmails,
+        daysAgo,
+        agentPrompt: ai.agentPrompt?.trim() || defaultPrompt,
+        suggestedSubject: ai.subject?.trim() || defaultSubject,
+      };
+    }),
+  );
 
-    const defaultPrompt = buildFollowUpAgentPrompt({
-      summary: event.summary ?? "Meeting",
-      attendeeNames,
-      attendeeEmails,
-      eventDate: event.start ?? sevenDaysAgo,
-    });
-
-    const defaultSubject = buildFollowUpSuggestedSubject(event.summary ?? "Meeting");
-
-    // Enrich with AI (non-blocking — use defaults on failure)
-    const ai: AIFollowUpSuggestion = await enrichWithAI({
-      summary: event.summary ?? "Meeting",
-      attendeeNames,
-      daysAgo,
-    }).catch(() => ({ subject: undefined, agentPrompt: undefined }));
-
-    results.push({
-      eventId: event.id,
-      eventSummary: event.summary?.trim() || "Meeting",
-      eventDate: event.start ?? "",
-      attendeeNames,
-      attendeeEmails,
-      daysAgo,
-      agentPrompt: (ai.agentPrompt?.trim()) || defaultPrompt,
-      suggestedSubject: (ai.subject?.trim()) || defaultSubject,
-    });
-  }
-
-  return results;
+  return checked.filter((item): item is MissedFollowUp => item !== null);
 }
