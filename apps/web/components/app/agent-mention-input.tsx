@@ -22,16 +22,16 @@ function getActiveMention(text: string, cursor: number) {
 
 type AgentMentionInputProps = {
   value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
+  onChangeAction: (value: string) => void;
+  onSubmitAction: () => void;
   disabled?: boolean;
   placeholder?: string;
 };
 
 export function AgentMentionInput({
   value,
-  onChange,
-  onSubmit,
+  onChangeAction,
+  onSubmitAction,
   disabled,
   placeholder,
 }: AgentMentionInputProps) {
@@ -136,7 +136,7 @@ export function AgentMentionInput({
     const spacer = after.startsWith(" ") || after.length === 0 ? "" : " ";
     const next = `${before}${insert}${spacer}${after}`;
     const nextCursor = before.length + insert.length + spacer.length;
-    onChange(next);
+    onChangeAction(next);
     setMention(null);
     setActiveIndex(0);
     window.requestAnimationFrame(() => {
@@ -173,9 +173,24 @@ export function AgentMentionInput({
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSubmit();
+      onSubmitAction();
     }
   };
+
+  let suggestionsEmptyState: React.ReactNode = null;
+  if (syncPhase === "syncing" || (search.isFetching && suggestions.length === 0)) {
+    suggestionsEmptyState = (
+      <li className="thread-agent-mentions-empty">
+        <Loader2 size={12} className="thread-spin" /> Loading senders…
+      </li>
+    );
+  } else if (suggestions.length === 0) {
+    suggestionsEmptyState = (
+      <li className="thread-agent-mentions-empty">
+        No matches yet — wait for inbox import to finish or open Inbox first.
+      </li>
+    );
+  }
 
   return (
     <div className="thread-agent-composer-wrap">
@@ -192,15 +207,7 @@ export function AgentMentionInput({
 
       {showSuggestions ? (
         <ul className="thread-agent-mentions" role="listbox" aria-label="Contact suggestions">
-          {syncPhase === "syncing" || (search.isFetching && suggestions.length === 0) ? (
-            <li className="thread-agent-mentions-empty">
-              <Loader2 size={12} className="thread-spin" /> Loading senders…
-            </li>
-          ) : suggestions.length === 0 ? (
-            <li className="thread-agent-mentions-empty">
-              No matches yet — wait for inbox import to finish or open Inbox first.
-            </li>
-          ) : null}
+          {suggestionsEmptyState}
           {suggestions.map((contact, i) => (
             <li key={contact.id}>
               <button
@@ -228,7 +235,7 @@ export function AgentMentionInput({
           ref={inputRef}
           value={value}
           onChange={(e) => {
-            onChange(e.target.value);
+            onChangeAction(e.target.value);
             updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
           }}
           onClick={(e) => updateMention(value, e.currentTarget.selectionStart ?? value.length)}
@@ -244,7 +251,7 @@ export function AgentMentionInput({
           className="thread-agent-send"
           disabled={disabled || !value.trim()}
           aria-label="Send"
-          onClick={onSubmit}
+          onClick={onSubmitAction}
         >
           <SendHorizonal size={16} />
         </button>

@@ -17,7 +17,7 @@ interface Props {
   onOpenThread?: (id: string) => void;
 }
 
-export function MeetingPrepPanel({ eventId, timeZone, onOpenThread }: Props) {
+export function MeetingPrepPanel({ eventId, timeZone, onOpenThread }: Readonly<Props>) {
   const prep = trpc.ai.meetingPrep.useQuery(
     { eventId, timeZone },
     {
@@ -100,8 +100,8 @@ export function MeetingPrepPanel({ eventId, timeZone, onOpenThread }: Props) {
             Talking points
           </p>
           <ul className="mpp-list">
-            {d.talkingPoints.map((point, i) => (
-              <li key={i} className="mpp-list-item">
+            {d.talkingPoints.map((point) => (
+              <li key={point} className="mpp-list-item">
                 {point}
               </li>
             ))}
@@ -117,8 +117,8 @@ export function MeetingPrepPanel({ eventId, timeZone, onOpenThread }: Props) {
             Risks
           </p>
           <ul className="mpp-list">
-            {d.risks.map((risk, i) => (
-              <li key={i} className="mpp-list-item mpp-risk">
+            {d.risks.map((risk) => (
+              <li key={risk} className="mpp-list-item mpp-risk">
                 {risk}
               </li>
             ))}

@@ -11,11 +11,11 @@ export type AgentFocusState = {
 
 type AgentFocusChipProps = {
   focus: AgentFocusState;
-  onClear: () => void;
+  onClearAction: () => void;
   disabled?: boolean;
 };
 
-export function AgentFocusChip({ focus, onClear, disabled }: AgentFocusChipProps) {
+export function AgentFocusChip({ focus, onClearAction, disabled }: AgentFocusChipProps) {
   if (!focus.threadId && !focus.eventId) return null;
 
   const isThread = Boolean(focus.threadId);
@@ -25,7 +25,7 @@ export function AgentFocusChip({ focus, onClear, disabled }: AgentFocusChipProps
     : focus.eventLabel?.trim() || "Calendar event";
 
   return (
-    <div className="thread-agent-focus-chip" role="status" aria-label={`Focused on ${label}`}>
+    <output className="thread-agent-focus-chip" aria-label={`Focused on ${label}`}>
       <Icon size={13} aria-hidden />
       <span className="thread-agent-focus-chip-label" title={label}>
         {label}
@@ -33,13 +33,13 @@ export function AgentFocusChip({ focus, onClear, disabled }: AgentFocusChipProps
       <button
         type="button"
         className="thread-agent-focus-chip-clear"
-        onClick={onClear}
+        onClick={onClearAction}
         disabled={disabled}
         aria-label="Remove focus"
         title="Remove focus"
       >
         <X size={12} />
       </button>
-    </div>
+    </output>
   );
 }

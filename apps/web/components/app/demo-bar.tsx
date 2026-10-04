@@ -15,7 +15,13 @@ const FEATURE_LINKS: { feature: DemoFeature; href: string; icon: typeof Bot }[] 
   { feature: "mail", href: "/inbox", icon: Sparkles },
 ];
 
-export function DemoBar({ email }: DemoBarProps) {
+function getFeatureState(isExhausted: boolean, remaining: number): "exhausted" | "low" | "ok" {
+  if (isExhausted) return "exhausted";
+  if (remaining <= 1) return "low";
+  return "ok";
+}
+
+export function DemoBar({ email }: Readonly<DemoBarProps>) {
   const { isDemo, limits } = useDemoMode(email);
   const [dismissed, setDismissed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -37,7 +43,7 @@ export function DemoBar({ email }: DemoBarProps) {
   const allExhausted = FEATURE_LINKS.every(({ feature }) => limits[feature].isExhausted);
 
   return (
-    <div className="thread-demo-bar" role="status" aria-label="Demo workspace">
+    <output className="thread-demo-bar" aria-label="Demo workspace">
       <div className="thread-demo-bar-main">
         <FlaskConical size={13} className="thread-demo-bar-icon" aria-hidden />
         <span className="thread-demo-bar-label">Demo limits</span>
@@ -50,7 +56,7 @@ export function DemoBar({ email }: DemoBarProps) {
                 key={feature}
                 href={href}
                 className="thread-demo-bar-feature"
-                data-state={state.isExhausted ? "exhausted" : state.remaining <= 1 ? "low" : "ok"}
+                data-state={getFeatureState(state.isExhausted, state.remaining)}
               >
                 <Icon size={11} />
                 {state.label} {state.remaining}/{state.limit}
@@ -73,6 +79,6 @@ export function DemoBar({ email }: DemoBarProps) {
           <X size={12} />
         </button>
       </div>
-    </div>
+    </output>
   );
 }

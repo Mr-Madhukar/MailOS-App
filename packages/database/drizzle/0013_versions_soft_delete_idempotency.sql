@@ -52,9 +52,8 @@ SELECT
     '[]'::jsonb
   )
 FROM "forms" f
-WHERE NOT EXISTS (
-  SELECT 1 FROM "form_versions" fv WHERE fv.form_id = f.id AND fv.version_number = 1
-);
+LEFT JOIN "form_versions" fv ON fv.form_id = f.id AND fv.version_number = 1
+WHERE fv.id IS NULL;
 
 UPDATE "forms" f
 SET "current_version_id" = fv.id

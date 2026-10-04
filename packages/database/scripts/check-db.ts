@@ -31,7 +31,9 @@ function maskHost(connectionString: string) {
   }
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error("  ✗ Database check failed:", error instanceof Error ? error.message : error);
   process.exit(1);
-});
+}

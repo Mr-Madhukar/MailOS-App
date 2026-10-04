@@ -14,10 +14,12 @@ export function ThreadLogoMark({ size = 28 }: Readonly<{ size?: number }>) {
 }
 
 const WORDMARK_LETTERS = ["M", "A", "I", "L", "O", "S"] as const;
+const FONT_SIZES = { sm: 12, md: 14, lg: 17 } as const;
+const GAPS = { sm: "0.28em", md: "0.34em", lg: "0.38em" } as const;
 
 export function ThreadWordmark({ size = "md" }: Readonly<{ size?: "sm" | "md" | "lg" }>) {
-  const fontSize = size === "sm" ? 12 : size === "lg" ? 17 : 14;
-  const gap = size === "lg" ? "0.38em" : size === "sm" ? "0.28em" : "0.34em";
+  const fontSize = FONT_SIZES[size];
+  const gap = GAPS[size];
 
   return (
     <span

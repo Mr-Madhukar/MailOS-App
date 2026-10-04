@@ -111,15 +111,19 @@ function buildFallbackNeedsAttention(
   awaiting: BriefGatherResult["threads"],
   pendingQueue: BriefGatherResult["pendingQueue"]
 ): DailyBriefItem[] {
-  const needsAttention: DailyBriefItem[] = awaiting.slice(0, 4).map((thread) => ({
-    headline: `Reply pending: ${thread.subject}`,
-    detail:
-      thread.daysWaiting != null
-        ? `${thread.from} — waiting ${thread.daysWaiting} day${thread.daysWaiting === 1 ? "" : "s"}`
-        : thread.from,
-    urgency: (thread.daysWaiting ?? 0) >= 2 ? "high" : "medium",
-    threadId: thread.id,
-  }));
+  const needsAttention: DailyBriefItem[] = awaiting.slice(0, 4).map((thread) => {
+    let detail = thread.from;
+    if (thread.daysWaiting != null) {
+      const suffix = thread.daysWaiting === 1 ? "day" : "days";
+      detail = `${thread.from} — waiting ${thread.daysWaiting} ${suffix}`;
+    }
+    return {
+      headline: `Reply pending: ${thread.subject}`,
+      detail,
+      urgency: (thread.daysWaiting ?? 0) >= 2 ? "high" : "medium",
+      threadId: thread.id,
+    };
+  });
 
   for (const item of pendingQueue.slice(0, 2)) {
     needsAttention.push({
@@ -132,14 +136,21 @@ function buildFallbackNeedsAttention(
   return needsAttention;
 }
 
+function getMeetingDetail(meeting: BriefGatherResult["meetings"][number]): string | undefined {
+  if (meeting.needsPrep) {
+    return "Prep recommended — no agenda in the invite";
+  }
+  if (meeting.relatedEmailCount > 0) {
+    const suffix = meeting.relatedEmailCount === 1 ? "email" : "emails";
+    return `${meeting.relatedEmailCount} related ${suffix} found`;
+  }
+  return undefined;
+}
+
 function buildFallbackMeetingInsights(meetings: BriefGatherResult["meetings"]): DailyBriefItem[] {
   return meetings.slice(0, 4).map((meeting) => ({
     headline: meeting.summary,
-    detail: meeting.needsPrep
-      ? "Prep recommended — no agenda in the invite"
-      : meeting.relatedEmailCount > 0
-        ? `${meeting.relatedEmailCount} related email${meeting.relatedEmailCount === 1 ? "" : "s"} found`
-        : undefined,
+    detail: getMeetingDetail(meeting),
     urgency: meeting.needsPrep ? "medium" : "low",
     eventId: meeting.id,
   }));

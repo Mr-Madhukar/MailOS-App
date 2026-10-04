@@ -409,6 +409,51 @@ async function* parseSseStream(
   }
 }
 
+async function extractStreamErrorMessage(res: Response): Promise<string> {
+  try {
+    const err = (await res.json()) as { error?: string };
+    return err.error ?? "Agent request failed";
+  } catch {
+    return "Agent request failed";
+  }
+}
+
+function appendAssistantToken(prev: readonly ChatMessage[], tokenText: string): ChatMessage[] {
+  const last = prev.at(-1);
+  if (last?.role === "assistant") {
+    return [...prev.slice(0, -1), { role: "assistant", content: last.content + tokenText }];
+  }
+  return [...prev, { role: "assistant", content: tokenText }];
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
+}
+
+async function consumeAgentStream(
+  stream: ReadableStream<Uint8Array>,
+  handlers: {
+    onStatus: (label: string) => void;
+    onToken: (text: string) => void;
+    onComplete: (data: AgentStreamData) => void;
+  },
+) {
+  for await (const { event, data } of parseSseStream(stream)) {
+    if (event === "status") {
+      handlers.onStatus(data.label ?? "Working…");
+    } else if (event === "token") {
+      handlers.onToken(data.text ?? "");
+    } else if (event === "complete") {
+      handlers.onComplete(data);
+    } else if (event === "error") {
+      throw new Error(data.message ?? "Agent error");
+    }
+  }
+}
+
 function syncBriefDismissals(
   actions: ActionCard[],
   focusedThreadId?: string,
@@ -685,61 +730,49 @@ function AgentPageContent() {
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     setIsPending(true);
 
-    fetch(`/agent/stream`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", "x-thread-csrf": "1" },
-      body: JSON.stringify({
-        message,
-        sessionId: activeSessionId,
-        history,
-        toolMemory,
-        userEmail: meQuery.data?.email,
-        focusCleared: !hasFocus,
-        focusThreadId: focus.threadId,
-        focusEventId: focus.eventId,
-        focusThreadLabel: focus.threadLabel,
-        focusEventLabel: focus.eventLabel,
-      }),
-      signal: abortController.signal,
-    })
-      .then(async (res) => {
+    const runStream = async () => {
+      try {
+        const res = await fetch(`/agent/stream`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "x-thread-csrf": "1" },
+          body: JSON.stringify({
+            message,
+            sessionId: activeSessionId,
+            history,
+            toolMemory,
+            userEmail: meQuery.data?.email,
+            focusCleared: !hasFocus,
+            focusThreadId: focus.threadId,
+            focusEventId: focus.eventId,
+            focusThreadLabel: focus.threadLabel,
+            focusEventLabel: focus.eventLabel,
+          }),
+          signal: abortController.signal,
+        });
+
         if (!res.ok || !res.body) {
-          const err = await res.json().catch(() => ({ error: "Agent request failed" }));
-          throw new Error((err as { error?: string }).error ?? "Agent request failed");
+          throw new Error(await extractStreamErrorMessage(res));
         }
 
-        for await (const { event, data } of parseSseStream(res.body)) {
-          if (event === "status") {
-            setStreamStatus(data.label ?? "Working…");
-          } else if (event === "token") {
-            const tokenText = data.text ?? "";
-            setMessages((prev) => {
-              const last = prev.at(-1);
-              if (last?.role === "assistant") {
-                return [...prev.slice(0, -1), { role: "assistant", content: last.content + tokenText }];
-              }
-              return [...prev, { role: "assistant", content: tokenText }];
-            });
-          } else if (event === "complete") {
-            handleStreamComplete(data);
-          } else if (event === "error") {
-            throw new Error(data.message ?? "Agent error");
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (err instanceof Error && err.name === "AbortError") return;
+        await consumeAgentStream(res.body, {
+          onStatus: setStreamStatus,
+          onToken: (token) => setMessages((prev) => appendAssistantToken(prev, token)),
+          onComplete: handleStreamComplete,
+        });
+      } catch (err: unknown) {
+        if (isAbortError(err)) return;
         toast.error(err instanceof Error ? err.message : "Agent request failed");
-      })
-      .finally(() => {
+      } finally {
         if (streamAbortRef.current === abortController) {
           streamAbortRef.current = null;
         }
         setIsPending(false);
         setStreamStatus(null);
-      });
+      }
+    };
+
+    void runStream();
 
     return true;
   };
@@ -800,8 +833,8 @@ function AgentPageContent() {
       <div className="thread-agent-layout">
         <AgentSessionSidebar
           activeSessionId={activeSessionId}
-          onSelectSession={handleSelectSession}
-          onNewChat={() => void handleNewChat()}
+          onSelectSessionAction={handleSelectSession}
+          onNewChatAction={() => void handleNewChat()}
           disabled={isPending || createSession.isPending}
         />
 
@@ -920,7 +953,7 @@ function AgentPageContent() {
             >
               <div className="thread-agent-composer-wrap">
                 <div className="thread-agent-focus-row">
-                  <AgentFocusChip focus={focus} onClear={() => void handleClearFocus()} disabled={isPending} />
+                  <AgentFocusChip focus={focus} onClearAction={() => void handleClearFocus()} disabled={isPending} />
                   <button
                     type="button"
                     className="thread-agent-attach-btn"
@@ -939,8 +972,8 @@ function AgentPageContent() {
                 />
                 <AgentMentionInput
                   value={input}
-                  onChange={setInput}
-                  onSubmit={() => send(input)}
+                  onChangeAction={setInput}
+                  onSubmitAction={() => send(input)}
                   disabled={isPending}
                   placeholder={
                     ready

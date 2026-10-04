@@ -92,7 +92,8 @@ export function formatPrioritySummary(summary: {
 
   if (parts.length === 0) {
     if (visible > 0) {
-      return `Nothing urgent · ${visible} worth a look${hidden > 0 ? ` · ${hidden} low-relevance hidden` : ""}`;
+      const hiddenSuffix = hidden > 0 ? ` · ${hidden} low-relevance hidden` : "";
+      return `Nothing urgent · ${visible} worth a look` + hiddenSuffix;
     }
     return `${summary.total} threads analyzed — inbox is clear.`;
   }

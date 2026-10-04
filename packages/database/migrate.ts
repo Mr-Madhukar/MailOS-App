@@ -8,13 +8,18 @@ import { createPgClient, getMigrationDatabaseUrl } from "./pg";
 
 import { fileURLToPath } from "node:url";
 
+function getCurrentDir(): string {
+  if (typeof __dirname !== "undefined") {
+    return __dirname;
+  }
+  if (import.meta?.url) {
+    return path.dirname(fileURLToPath(import.meta.url));
+  }
+  return process.cwd();
+}
+
 function resolveMigrationsFolder(): string {
-  const currentDir =
-    typeof __dirname !== "undefined"
-      ? __dirname
-      : typeof import.meta !== "undefined" && import.meta.url
-        ? path.dirname(fileURLToPath(import.meta.url))
-        : process.cwd();
+  const currentDir = getCurrentDir();
 
   const candidates = [
     path.join(process.cwd(), "packages/database/drizzle"),

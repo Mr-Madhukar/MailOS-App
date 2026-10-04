@@ -9,8 +9,8 @@ type SessionListItem = RouterOutputs["agent"]["listSessions"][number];
 
 type AgentSessionSidebarProps = {
   activeSessionId: string | null;
-  onSelectSession: (id: string) => void;
-  onNewChat: () => void;
+  onSelectSessionAction: (id: string) => void;
+  onNewChatAction: () => void;
   disabled?: boolean;
 };
 
@@ -35,10 +35,10 @@ function sessionTitle(session: SessionListItem): string {
 
 export function AgentSessionSidebar({
   activeSessionId,
-  onSelectSession,
-  onNewChat,
+  onSelectSessionAction,
+  onNewChatAction,
   disabled,
-}: AgentSessionSidebarProps) {
+}: Readonly<AgentSessionSidebarProps>) {
   const utils = trpc.useUtils();
   const sessionsQuery = trpc.agent.listSessions.useQuery({ limit: 30 }, { staleTime: 10_000 });
   const deleteSession = trpc.agent.deleteSession.useMutation({
@@ -49,6 +49,48 @@ export function AgentSessionSidebar({
 
   const sessions = sessionsQuery.data ?? [];
 
+  const renderSidebarContent = () => {
+    if (sessionsQuery.isLoading) {
+      return <p className="thread-agent-sidebar-empty">Loading chats…</p>;
+    }
+    if (sessions.length === 0) {
+      return <p className="thread-agent-sidebar-empty">No chats yet — start a new conversation.</p>;
+    }
+    return sessions.map((session) => {
+      const active = session.id === activeSessionId;
+      return (
+        <div
+          key={session.id}
+          className="thread-agent-sidebar-item-wrap"
+          data-active={active ? "true" : undefined}
+        >
+          <button
+            type="button"
+            className="thread-agent-sidebar-item"
+            onClick={() => onSelectSessionAction(session.id)}
+            disabled={disabled}
+          >
+            <span className="thread-agent-sidebar-item-title">{sessionTitle(session)}</span>
+            <span className="thread-agent-sidebar-item-meta">
+              {session.messageCount > 0 ? `${session.messageCount} msgs · ` : ""}
+              {formatRelativeTime(new Date(session.updatedAt))}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="thread-agent-sidebar-delete"
+            onClick={() => deleteSession.mutate({ id: session.id })}
+            disabled={disabled || deleteSession.isPending}
+            aria-label="Delete chat"
+            title="Delete chat"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      );
+    });
+  };
+
   return (
     <aside className="thread-agent-sidebar" aria-label="Agent conversations">
       <div className="thread-agent-sidebar-head">
@@ -57,7 +99,7 @@ export function AgentSessionSidebar({
         <button
           type="button"
           className="thread-agent-sidebar-new"
-          onClick={onNewChat}
+          onClick={onNewChatAction}
           disabled={disabled}
           title="New chat"
         >
@@ -67,45 +109,7 @@ export function AgentSessionSidebar({
       </div>
 
       <div className="thread-agent-sidebar-list">
-        {sessionsQuery.isLoading ? (
-          <p className="thread-agent-sidebar-empty">Loading chats…</p>
-        ) : sessions.length === 0 ? (
-          <p className="thread-agent-sidebar-empty">No chats yet — start a new conversation.</p>
-        ) : (
-          sessions.map((session) => {
-            const active = session.id === activeSessionId;
-            return (
-              <div
-                key={session.id}
-                className="thread-agent-sidebar-item-wrap"
-                data-active={active ? "true" : undefined}
-              >
-                <button
-                  type="button"
-                  className="thread-agent-sidebar-item"
-                  onClick={() => onSelectSession(session.id)}
-                  disabled={disabled}
-                >
-                  <span className="thread-agent-sidebar-item-title">{sessionTitle(session)}</span>
-                  <span className="thread-agent-sidebar-item-meta">
-                    {session.messageCount > 0 ? `${session.messageCount} msgs · ` : ""}
-                    {formatRelativeTime(new Date(session.updatedAt))}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="thread-agent-sidebar-delete"
-                  onClick={() => deleteSession.mutate({ id: session.id })}
-                  disabled={disabled || deleteSession.isPending}
-                  aria-label="Delete chat"
-                  title="Delete chat"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })
-        )}
+        {renderSidebarContent()}
       </div>
     </aside>
   );

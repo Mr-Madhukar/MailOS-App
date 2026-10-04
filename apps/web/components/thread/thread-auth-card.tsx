@@ -41,11 +41,14 @@ function GoogleIcon({ size = 18 }: { readonly size?: number }) {
   );
 }
 
+const PLACEHOLDER_FIELD_KEYS = ["auth-field-1", "auth-field-2", "auth-field-3", "auth-field-4"] as const;
+
 function AuthFormPlaceholder({ fields = 2 }: { readonly fields?: number }) {
+  const keys = PLACEHOLDER_FIELD_KEYS.slice(0, Math.min(fields, PLACEHOLDER_FIELD_KEYS.length));
   return (
     <div className="thread-auth-form thread-auth-form-placeholder" aria-hidden>
-      {Array.from({ length: fields }).map((_, i) => (
-        <div key={i} className="thread-auth-input thread-auth-input-placeholder" />
+      {keys.map((key) => (
+        <div key={key} className="thread-auth-input thread-auth-input-placeholder" />
       ))}
       <div className="thread-auth-submit thread-auth-submit-placeholder" />
     </div>

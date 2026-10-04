@@ -77,11 +77,13 @@ export async function summarizeThread(input: {
       const from = m.from ?? "Unknown";
       const date = m.date ? new Date(m.date).toLocaleDateString() : "";
       const body = (m.body ?? "").slice(0, 600).replace(/\n{3,}/g, "\n\n");
-      const attachmentLine =
+      const attachmentList =
         m.attachments && m.attachments.length > 0
-          ? `\nAttachments: ${m.attachments.map((a) => `${a.filename} (${a.mimeType})`).join(", ")}`
+          ? m.attachments.map((a) => `${a.filename} (${a.mimeType})`).join(", ")
           : "";
-      return `[Message ${i + 1}] From: ${from}${date ? ` (${date})` : ""}${attachmentLine}\n${body}`;
+      const attachmentLine = attachmentList ? `\nAttachments: ${attachmentList}` : "";
+      const datePart = date ? ` (${date})` : "";
+      return `[Message ${i + 1}] From: ${from}${datePart}${attachmentLine}\n${body}`;
     })
     .join("\n\n---\n\n");
 

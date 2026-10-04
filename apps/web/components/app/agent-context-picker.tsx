@@ -163,7 +163,15 @@ export function AgentContextPicker({
   if (!open) return null;
 
   return (
-    <div className="thread-agent-context-picker" role="dialog" aria-label="Attach context">
+    <dialog
+      open
+      className="thread-agent-context-picker"
+      aria-label="Attach context"
+      onCancel={(e) => {
+        e.preventDefault();
+        onCloseAction();
+      }}
+    >
       <div className="thread-agent-context-picker-head">
         <Paperclip size={14} />
         <span>Attach context</span>
@@ -206,7 +214,7 @@ export function AgentContextPicker({
         />
       </div>
 
-      <ul className="thread-agent-context-picker-list" role="listbox">
+      <ul className="thread-agent-context-picker-list">
         {loading && (
           <li className="thread-agent-context-picker-empty">
             <Loader2 size={14} className="thread-spin" />
@@ -230,6 +238,6 @@ export function AgentContextPicker({
           />
         )}
       </ul>
-    </div>
+    </dialog>
   );
 }

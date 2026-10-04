@@ -23,14 +23,41 @@ export default function CorsairApprovePage() {
 
   useEffect(() => {
     if (!token) return;
-    void fetch(`/corsair/permissions/${encodeURIComponent(token)}`, { credentials: "include" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
-        return res.json() as Promise<PermissionRecord>;
-      })
-      .then(setRecord)
-      .catch((err: Error) => toast.error(err.message))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function loadPermission() {
+      try {
+        const res = await fetch(`/corsair/permissions/${encodeURIComponent(token)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          let errBody: { error?: string } = {};
+          try {
+            errBody = await res.json();
+          } catch {
+            // ignore non-json response
+          }
+          throw new Error(errBody.error ?? res.statusText);
+        }
+        const data = (await res.json()) as PermissionRecord;
+        if (!cancelled) {
+          setRecord(data);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : "Failed to load permission");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPermission();
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const act = useCallback(
@@ -43,7 +70,12 @@ export default function CorsairApprovePage() {
           credentials: "include",
           headers: { "x-thread-csrf": "1" },
         });
-        const body = await res.json().catch(() => ({}));
+        let body: { error?: string } = {};
+        try {
+          body = await res.json();
+        } catch {
+          // ignore non-json response
+        }
         if (!res.ok) throw new Error(body.error ?? res.statusText);
         toast.success(action === "approve" ? "Approved and executed via Corsair" : "Request denied");
         setRecord((prev) => (prev ? { ...prev, status: action === "approve" ? "completed" : "denied" } : prev));

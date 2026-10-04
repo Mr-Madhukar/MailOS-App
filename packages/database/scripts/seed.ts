@@ -50,39 +50,41 @@ async function purgeCorsairGmailForTenant(client: Client, tenantId: string) {
 }
 
 async function seedDemoMailCache(db: NodePgDatabase, userId: string) {
-  for (const fixture of DEMO_MAIL_FIXTURES) {
-    const lastMessageAt = new Date(Date.now() - fixture.hoursAgo * 3_600_000);
-    const labelIds = ["INBOX", ...(fixture.starred ? ["STARRED"] : [])];
-    await db
-      .insert(threadMailCacheTable)
-      .values({
-        id: `${userId}:${fixture.threadId}`,
-        userId,
-        threadId: fixture.threadId,
-        subject: fixture.subject,
-        fromName: fixture.fromName,
-        fromAddress: fixture.fromAddress,
-        snippet: fixture.body,
-        lastMessageAt,
-        messageCount: 1,
-        unread: fixture.unread,
-        labelIds,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [threadMailCacheTable.userId, threadMailCacheTable.threadId],
-        set: {
+  await Promise.all(
+    DEMO_MAIL_FIXTURES.map(async (fixture) => {
+      const lastMessageAt = new Date(Date.now() - fixture.hoursAgo * 3_600_000);
+      const labelIds = ["INBOX", ...(fixture.starred ? ["STARRED"] : [])];
+      await db
+        .insert(threadMailCacheTable)
+        .values({
+          id: `${userId}:${fixture.threadId}`,
+          userId,
+          threadId: fixture.threadId,
           subject: fixture.subject,
           fromName: fixture.fromName,
           fromAddress: fixture.fromAddress,
           snippet: fixture.body,
           lastMessageAt,
+          messageCount: 1,
           unread: fixture.unread,
           labelIds,
           updatedAt: new Date(),
-        },
-      });
-  }
+        })
+        .onConflictDoUpdate({
+          target: [threadMailCacheTable.userId, threadMailCacheTable.threadId],
+          set: {
+            subject: fixture.subject,
+            fromName: fixture.fromName,
+            fromAddress: fixture.fromAddress,
+            snippet: fixture.body,
+            lastMessageAt,
+            unread: fixture.unread,
+            labelIds,
+            updatedAt: new Date(),
+          },
+        });
+    }),
+  );
   console.log(`[seed] Demo mail cache seeded (${DEMO_MAIL_FIXTURES.length} threads).`);
 }
 
@@ -95,33 +97,35 @@ async function seedDemoQueueItems(db: NodePgDatabase, userId: string) {
 
   const byTitle = new Map(existing.map((row) => [row.title, row.id]));
 
-  for (const fixture of fixtures) {
-    const existingId = byTitle.get(fixture.title);
-    if (existingId) {
-      await db
-        .update(threadQueueItemsTable)
-        .set({
-          kind: fixture.kind,
-          preview: fixture.preview,
-          payload: fixture.payload,
-          status: fixture.status,
-          resolvedAt: fixture.status === "pending" ? null : new Date(),
-          errorMessage: null,
-        })
-        .where(eq(threadQueueItemsTable.id, existingId));
-      continue;
-    }
+  await Promise.all(
+    fixtures.map(async (fixture) => {
+      const existingId = byTitle.get(fixture.title);
+      if (existingId) {
+        await db
+          .update(threadQueueItemsTable)
+          .set({
+            kind: fixture.kind,
+            preview: fixture.preview,
+            payload: fixture.payload,
+            status: fixture.status,
+            resolvedAt: fixture.status === "pending" ? null : new Date(),
+            errorMessage: null,
+          })
+          .where(eq(threadQueueItemsTable.id, existingId));
+        return;
+      }
 
-    await db.insert(threadQueueItemsTable).values({
-      userId,
-      kind: fixture.kind,
-      title: fixture.title,
-      preview: fixture.preview,
-      payload: fixture.payload,
-      status: fixture.status,
-      resolvedAt: fixture.status === "pending" ? null : new Date(),
-    });
-  }
+      await db.insert(threadQueueItemsTable).values({
+        userId,
+        kind: fixture.kind,
+        title: fixture.title,
+        preview: fixture.preview,
+        payload: fixture.payload,
+        status: fixture.status,
+        resolvedAt: fixture.status === "pending" ? null : new Date(),
+      });
+    }),
+  );
   console.log(`[seed] Demo queue items synced (${fixtures.length} items).`);
 }
 
@@ -197,7 +201,9 @@ async function main() {
   }
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error: unknown) {
   console.error("[seed] Failed:", error instanceof Error ? error.message : error);
   process.exit(1);
-});
+}

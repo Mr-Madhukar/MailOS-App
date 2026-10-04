@@ -2888,7 +2888,14 @@ dialog.thread-modal-backdrop::backdrop {
   border-color: var(--thread-line-strong);
 }
 
+dialog.thread-agent-context-picker,
 .thread-agent-context-picker {
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  width: auto;
+  max-width: none;
+  max-height: none;
   position: absolute;
   left: 12px;
   right: 12px;

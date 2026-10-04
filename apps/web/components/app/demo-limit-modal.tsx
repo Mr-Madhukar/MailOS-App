@@ -33,11 +33,20 @@ const FEATURE_COPY: Record<
   },
 };
 
-export function DemoLimitModal({ onClose, feature }: DemoLimitModalProps) {
+export function DemoLimitModal({ onClose, feature }: Readonly<DemoLimitModalProps>) {
   const copy = FEATURE_COPY[feature];
 
   return (
-    <div className="thread-demo-expired-overlay" role="dialog" aria-modal aria-label={copy.title}>
+    <dialog
+      open
+      aria-modal="true"
+      aria-label={copy.title}
+      className="thread-demo-expired-overlay"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
       <div className="thread-demo-expired-card">
         <div className="thread-demo-expired-icon">
           <Sparkles size={22} />
@@ -59,7 +68,7 @@ export function DemoLimitModal({ onClose, feature }: DemoLimitModalProps) {
           <X size={14} />
         </button>
       </div>
-    </div>
+    </dialog>
   );
 }
 

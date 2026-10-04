@@ -1,5 +1,4 @@
-import { and, desc, eq } from "@repo/database";
-import db from "@repo/database";
+import db, { and, desc, eq } from "@repo/database";
 import {
   agentChatHistoryTable,
   agentChatSessionsTable,
@@ -208,10 +207,17 @@ export async function appendAgentSessionTurn(
     { role: "assistant" as const, content: input.assistantReply },
   ].slice(-MAX_STORED_MESSAGES);
 
+  let focus: AgentSessionFocus | null | undefined;
+  if (input.focusCleared) {
+    focus = null;
+  } else if (input.focus !== undefined) {
+    focus = input.focus;
+  }
+
   return updateAgentSession(userId, sessionId, {
     messages,
     toolMemory: input.toolMemory,
-    focus: input.focusCleared ? null : input.focus !== undefined ? input.focus : undefined,
+    focus,
     title: existing.title ?? deriveSessionTitle(messages),
   });
 }

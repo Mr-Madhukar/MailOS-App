@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Position, getSmoothStepPath } from "@xyflow/react";
 
-type ConnectorPath = { d: string; length: number };
+type ConnectorPath = { id: string; d: string; length: number };
 
 function anchorPoint(el: HTMLElement, selector: string, container: DOMRect) {
   const anchor = el.querySelector<HTMLElement>(selector);
@@ -61,13 +61,15 @@ function zigzagAnchors(
   };
 }
 
+type FlowDottedConnectorsProps = {
+  cardRefs: React.RefObject<(HTMLDivElement | null)[]>;
+  edgeVisible: boolean[];
+};
+
 export function FlowDottedConnectors({
   cardRefs,
   edgeVisible,
-}: {
-  cardRefs: React.RefObject<(HTMLDivElement | null)[]>;
-  edgeVisible: boolean[];
-}) {
+}: Readonly<FlowDottedConnectorsProps>) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [paths, setPaths] = useState<ConnectorPath[]>([]);
 
@@ -95,7 +97,7 @@ export function FlowDottedConnectors({
 
         const probe = document.createElementNS("http://www.w3.org/2000/svg", "path");
         probe.setAttribute("d", d);
-        next.push({ d, length: probe.getTotalLength() || 320 });
+        next.push({ id: `flow-connector-${i}`, d, length: probe.getTotalLength() || 320 });
       }
 
       setPaths(next);
@@ -135,7 +137,7 @@ export function FlowDottedConnectors({
       </defs>
       {paths.map((path, i) => (
         <path
-          key={i}
+          key={path.id}
           d={path.d}
           fill="none"
           stroke="var(--thread-accent-bright)"
