@@ -1,20 +1,24 @@
 import { TRPCError } from "@trpc/server";
 import { logger } from "@repo/logger";
 
+function resolveErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (typeof error === "object" && error !== null) {
+    return JSON.stringify(error);
+  }
+  return "Unknown error";
+}
+
 export function sanitizeTrpcError(error: unknown): never {
   if (error instanceof TRPCError) throw error;
 
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : typeof error === "object" && error !== null
-          ? JSON.stringify(error)
-          : "Unknown error";
-
   logger.error("Unhandled tRPC error", {
-    message,
+    message: resolveErrorMessage(error),
     stack: error instanceof Error ? error.stack : undefined,
   });
 
