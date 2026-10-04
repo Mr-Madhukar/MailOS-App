@@ -192,10 +192,10 @@ export function ThreadProcess() {
 function StageWatcher({
   children,
   onChange,
-}: {
+}: Readonly<{
   children: ReactNode;
   onChange: (visible: boolean) => void;
-}) {
+}>) {
   const { ref, visible } = useStageInView();
 
   useEffect(() => {

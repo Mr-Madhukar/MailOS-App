@@ -37,7 +37,7 @@ export function resolveGoogleCalendarTiming(input: {
   let endDateTime = normalizeWallDateTime(input.endDateTime);
 
   if (Date.parse(endDateTime) <= Date.parse(startDateTime)) {
-    const match = startDateTime.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(startDateTime);
     if (match) {
       let hour = Number.parseInt(match[2]!, 10) + 1;
       const minute = match[3]!;

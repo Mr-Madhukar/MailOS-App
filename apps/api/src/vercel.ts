@@ -47,12 +47,10 @@ async function handler(req: IncomingMessage, res: ServerResponse) {
   }
 
   try {
-    if (!bootPromise) {
-      bootPromise = bootExpress().catch((err: Error & { missing?: string[] }) => {
-        bootError = { message: err.message, missing: err.missing };
-        throw err;
-      });
-    }
+    bootPromise ??= bootExpress().catch((err: Error & { missing?: string[] }) => {
+      bootError = { message: err.message, missing: err.missing };
+      throw err;
+    });
 
     if (!app && (path === "/health" || path === "/")) {
       sendJson(res, 200, {

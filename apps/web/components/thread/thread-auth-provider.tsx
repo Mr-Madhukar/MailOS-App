@@ -21,7 +21,7 @@ export function useThreadAuth() {
   return ctx;
 }
 
-function ThreadAuthProviderInner({ children }: { children: ReactNode }) {
+function ThreadAuthProviderInner({ children }: Readonly<{ children: ReactNode }>) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading } = useThreadUser();
@@ -75,6 +75,6 @@ function ThreadAuthProviderInner({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function ThreadAuthProvider({ children }: { children: ReactNode }) {
+export function ThreadAuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   return <ThreadAuthProviderInner>{children}</ThreadAuthProviderInner>;
 }

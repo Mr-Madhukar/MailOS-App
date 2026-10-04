@@ -5,15 +5,16 @@ export async function fetchInWaves<T, R>(
   worker: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   if (items.length === 0) return [];
-  const results = new Array<R>(items.length);
+  const waves: T[][] = [];
   for (let offset = 0; offset < items.length; offset += waveSize) {
-    const slice = items.slice(offset, offset + waveSize);
-    const wave = await Promise.all(
-      slice.map((item, index) => worker(item, offset + index)),
-    );
-    for (let i = 0; i < wave.length; i++) {
-      results[offset + i] = wave[i]!;
-    }
+    waves.push(items.slice(offset, offset + waveSize));
   }
-  return results;
+
+  return waves.reduce(async (prevPromise, wave, waveIdx) => {
+    const acc = await prevPromise;
+    const waveResults = await Promise.all(
+      wave.map((item, index) => worker(item, waveIdx * waveSize + index)),
+    );
+    return acc.concat(waveResults);
+  }, Promise.resolve<R[]>([]));
 }

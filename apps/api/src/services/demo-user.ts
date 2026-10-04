@@ -1,5 +1,4 @@
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { usersTable } from "@repo/database/schema";
 
 export const DEMO_THREAD_ID_PREFIX = "demo-thread-";

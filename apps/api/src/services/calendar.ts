@@ -394,13 +394,15 @@ export class CorsairCalendarService implements CalendarService {
     const corsair = getCorsair().withTenant(tenantId);
     await this.truncateMasterRecurrenceBefore(tenantId, eventId, recurringEventId);
     const instances = await this.listFollowingInstances(tenantId, eventId, recurringEventId);
-    for (const event of instances) {
-      await corsair.googlecalendar.api.events.delete({
-        calendarId: "primary",
-        id: event.id,
-        sendUpdates: "all",
-      });
-    }
+    await Promise.all(
+      instances.map((event) =>
+        corsair.googlecalendar.api.events.delete({
+          calendarId: "primary",
+          id: event.id,
+          sendUpdates: "all",
+        }),
+      ),
+    );
     return { success: true as const };
   }
 
@@ -420,13 +422,15 @@ export class CorsairCalendarService implements CalendarService {
     await this.truncateMasterRecurrenceBefore(tenantId, eventId, masterId ?? undefined);
 
     const instances = await this.listFollowingInstances(tenantId, eventId, masterId ?? undefined);
-    for (const event of instances) {
-      await corsair.googlecalendar.api.events.delete({
-        calendarId: "primary",
-        id: event.id,
-        sendUpdates: "all",
-      });
-    }
+    await Promise.all(
+      instances.map((event) =>
+        corsair.googlecalendar.api.events.delete({
+          calendarId: "primary",
+          id: event.id,
+          sendUpdates: "all",
+        }),
+      ),
+    );
 
     let recurrence: string[] | undefined;
     if (masterId) {

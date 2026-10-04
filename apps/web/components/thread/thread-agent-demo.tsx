@@ -13,7 +13,7 @@ type Scenario = {
   effect: ReactNode;
 };
 
-function SkelBar({ w, strong = false }: { w: string; strong?: boolean }) {
+function SkelBar({ w, strong = false }: Readonly<{ w: string; strong?: boolean }>) {
   return <span className="thread-skel-bar" style={{ width: w, opacity: strong ? 0.8 : undefined }} />;
 }
 

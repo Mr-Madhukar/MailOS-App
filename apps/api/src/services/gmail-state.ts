@@ -1,5 +1,4 @@
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { threadGmailStateTable } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 

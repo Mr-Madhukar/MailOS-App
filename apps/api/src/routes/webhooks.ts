@@ -2,8 +2,7 @@ import { Router, type Request } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { processWebhook } from "corsair";
 
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { usersTable } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 import { trace, SpanStatusCode } from "@opentelemetry/api";

@@ -16,13 +16,13 @@ export function Reveal({
   className,
   style,
   as: Tag = "div",
-}: {
+}: Readonly<{
   children: ReactNode;
   delay?: number;
   className?: string;
   style?: CSSProperties;
   as?: "div" | "section" | "li";
-}) {
+}>) {
   const ref = useRef<HTMLElement | null>(null);
   const [shown, setShown] = useState(false);
 
@@ -65,14 +65,14 @@ export function InViewAnnotation({
   strokeWidth = 2,
   delay = 200,
   multiline = false,
-}: {
+}: Readonly<{
   children: ReactNode;
   type?: "underline" | "box" | "circle" | "highlight" | "bracket";
   color?: string;
   strokeWidth?: number;
   delay?: number;
   multiline?: boolean;
-}) {
+}>) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const [show, setShow] = useState(false);
 

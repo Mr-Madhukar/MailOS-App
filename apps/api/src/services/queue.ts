@@ -1,5 +1,4 @@
-import { and, count, desc, eq, inArray, lt } from "@repo/database";
-import db from "@repo/database";
+import db, { and, count, desc, eq, inArray, lt } from "@repo/database";
 import { threadQueueItemsTable, usersTable, type SelectQueueItem } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 import { getCalendarService } from "@repo/services/calendar";
@@ -679,18 +678,20 @@ export class ThreadQueueService implements QueueService {
     const parsed = parseQuickDeleteText(text);
 
     const pendingItems = await this.listItems(userId, { status: "pending", limit: 100 });
-    for (const item of pendingItems) {
-      if (item.kind !== "calendar_invite") continue;
-      try {
-        const payload = parseCalendarQueuePayload(item.payload);
-        if (!inviteMatchesDeleteCriteria(payload.summary, parsed, payload.startDateTime)) {
-          continue;
+    await Promise.all(
+      pendingItems.map(async (item) => {
+        if (item.kind !== "calendar_invite") return;
+        try {
+          const payload = parseCalendarQueuePayload(item.payload);
+          if (!inviteMatchesDeleteCriteria(payload.summary, parsed, payload.startDateTime)) {
+            return;
+          }
+          await this.dismiss(userId, item.id);
+        } catch {
+          // ignore malformed payloads
         }
-        await this.dismiss(userId, item.id);
-      } catch {
-        // ignore malformed payloads
-      }
-    }
+      }),
+    );
 
     const targets = await findCalendarDeleteTargets(userId, parsed);
     if (targets.length === 0) {
@@ -698,25 +699,25 @@ export class ThreadQueueService implements QueueService {
       throw serviceError("NOT_FOUND", `No calendar events found matching "${hint}".`);
     }
 
-    const queued: QueueItem[] = [];
-    for (const event of targets) {
-      const item = await this.enqueueCalendarDelete(
-        userId,
-        {
-          delete: {
-            eventId: event.id,
-            summary: event.summary ?? "Event",
-            htmlLink: event.htmlLink,
-            recurringEventId: event.recurringEventId,
-            cancelWithNotify: false,
+    const queued: QueueItem[] = await Promise.all(
+      targets.map((event) =>
+        this.enqueueCalendarDelete(
+          userId,
+          {
+            delete: {
+              eventId: event.id,
+              summary: event.summary ?? "Event",
+              htmlLink: event.htmlLink,
+              recurringEventId: event.recurringEventId,
+              cancelWithNotify: false,
+            },
+            title: input.title?.trim() || `Delete: ${event.summary ?? "Event"}`,
+            preview: input.preview?.trim() || truncate(text),
           },
-          title: input.title?.trim() || `Delete: ${event.summary ?? "Event"}`,
-          preview: input.preview?.trim() || truncate(text),
-        },
-        { origin: opts?.origin ?? "calendar" },
-      );
-      queued.push(item);
-    }
+          { origin: opts?.origin ?? "calendar" },
+        ),
+      ),
+    );
 
     if (queued.length === 1) return queued[0]!;
 

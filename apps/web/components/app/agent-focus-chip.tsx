@@ -15,7 +15,7 @@ type AgentFocusChipProps = {
   disabled?: boolean;
 };
 
-export function AgentFocusChip({ focus, onClearAction, disabled }: AgentFocusChipProps) {
+export function AgentFocusChip({ focus, onClearAction, disabled }: Readonly<AgentFocusChipProps>) {
   if (!focus.threadId && !focus.eventId) return null;
 
   const isThread = Boolean(focus.threadId);

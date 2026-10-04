@@ -6,10 +6,10 @@ import Link from "next/link";
 export default function AppError({
   error,
   reset,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   reset: () => void;
-}) {
+}>) {
   useEffect(() => {
     console.error("Thread app error:", error);
   }, [error]);

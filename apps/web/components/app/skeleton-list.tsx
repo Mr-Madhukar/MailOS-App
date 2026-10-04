@@ -2,7 +2,7 @@
  * Generic skeleton loader for list views (inbox, queue, calendar).
  * Shows `count` pulsing rows while data is loading.
  */
-export function SkeletonList({ count = 8 }: { count?: number }) {
+export function SkeletonList({ count = 8 }: Readonly<{ count?: number }>) {
   return (
     <div>
       {Array.from({ length: count }, (_, i) => (

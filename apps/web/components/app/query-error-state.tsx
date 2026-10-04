@@ -11,7 +11,7 @@ type QueryErrorStateProps = {
   style?: CSSProperties;
 };
 
-export function QueryErrorState({ title, message, onRetry, className, style }: QueryErrorStateProps) {
+export function QueryErrorState({ title, message, onRetry, className, style }: Readonly<QueryErrorStateProps>) {
   return (
     <div className={className ?? "thread-app-empty"} style={style}>
       <AlertTriangle size={22} style={{ opacity: 0.45, color: "#f87171" }} />

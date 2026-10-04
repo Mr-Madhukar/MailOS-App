@@ -9,7 +9,7 @@ type EmailMessageBodyProps = {
   className?: string;
 };
 
-export function EmailMessageBody({ bodyHtml, body, snippet, className }: EmailMessageBodyProps) {
+export function EmailMessageBody({ bodyHtml, body, snippet, className }: Readonly<EmailMessageBodyProps>) {
   const plain = body?.trim() || snippet?.trim() || "(No content)";
 
   if (bodyHtml?.trim()) {

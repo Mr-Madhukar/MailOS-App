@@ -1,5 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, sql } from "@repo/database";
-import db from "@repo/database";
+import db, { and, desc, eq, ilike, inArray, or, sql } from "@repo/database";
 import { threadMailCacheTable, type SelectMailCacheRow } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 import type { InboxThread } from "@repo/services/inbox";

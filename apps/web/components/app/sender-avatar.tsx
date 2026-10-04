@@ -31,7 +31,7 @@ export function SenderAvatar({
   const email = parseEmail(from);
   const initial = senderInitial(from);
   const isSelf = Boolean(
-    email && email.toLowerCase() === selfEmail?.trim().toLowerCase(),
+    selfEmail && email?.toLowerCase() === selfEmail.trim().toLowerCase(),
   );
   const [failed, setFailed] = useState(false);
 

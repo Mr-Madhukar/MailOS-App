@@ -3,9 +3,11 @@ import { logger } from "@repo/logger";
 
 import { getCorsair, getCorsairPool, isCorsairConfigured } from "../corsair";
 
+const APPROVAL_TOKEN_REGEX = /\/corsair\/approve\/([a-f0-9]+)/i;
+
 /** Extract Corsair permission token from async approval error text. */
 export function extractCorsairApprovalToken(message: string): string | null {
-  const match = message.match(/\/corsair\/approve\/([a-f0-9]+)/i);
+  const match = APPROVAL_TOKEN_REGEX.exec(message);
   return match?.[1] ?? null;
 }
 

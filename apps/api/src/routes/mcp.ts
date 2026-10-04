@@ -1006,7 +1006,7 @@ function handleMcpDiscovery(method: string, id: JsonRpcId, res: Response): Respo
 
 function handleMcpPromptsGet(body: JsonRpcRequest, id: JsonRpcId, res: Response): Response {
   const params = (body.params ?? {}) as Record<string, unknown>;
-  const name = String(params.name ?? "");
+  const name = getString(params.name).trim();
   const args = (params.arguments ?? {}) as Record<string, string>;
   const contactNameSuffix = args.name ? ` and name="${args.name}"` : "";
   const promptMap: Record<string, string> = {
@@ -1046,7 +1046,7 @@ async function fetchResourceContent(uri: string, userId: string): Promise<unknow
 
 async function handleMcpResourcesRead(req: Request, res: Response, body: JsonRpcRequest, id: JsonRpcId): Promise<Response | void> {
   const params = (body.params ?? {}) as Record<string, unknown>;
-  const uri = String(params.uri ?? "");
+  const uri = getString(params.uri).trim();
   const userId = await resolveMcpUserId(req);
   if (!userId) {
     return res.status(401).json(rpcError(id, -32001, "Authentication required to read resources"));
@@ -1070,7 +1070,7 @@ async function handleMcpResourcesRead(req: Request, res: Response, body: JsonRpc
 
 async function handleMcpToolsCall(req: Request, res: Response, body: JsonRpcRequest, id: JsonRpcId): Promise<Response | void> {
   const params = (body.params ?? {}) as Record<string, unknown>;
-  const toolName = String(params.name ?? "");
+  const toolName = getString(params.name).trim();
   const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
 
   const userId = await resolveMcpUserId(req);

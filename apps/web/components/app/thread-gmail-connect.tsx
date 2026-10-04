@@ -94,7 +94,7 @@ export function ThreadGmailConnect() {
   );
 }
 
-export function ThreadGmailConnectMenuItem({ onNavigate }: { onNavigate?: () => void }) {
+export function ThreadGmailConnectMenuItem({ onNavigate }: Readonly<{ onNavigate?: () => void }>) {
   const pathname = usePathname();
   const statusQuery = trpc.inbox.connectionStatus.useQuery({});
   const connectHref = `/api-connect/gmail?state=${encodeURIComponent(pathname || "/inbox")}`;

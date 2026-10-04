@@ -1,5 +1,4 @@
-import { eq } from "@repo/database";
-import db from "@repo/database";
+import db, { eq } from "@repo/database";
 import { usersTable } from "@repo/database/schema";
 import type { ApprovalDefaults, SettingsService } from "@repo/services/settings";
 

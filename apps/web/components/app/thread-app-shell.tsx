@@ -49,7 +49,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   "/settings": { title: "Settings", sub: "Account & connections" },
 };
 
-export function ThreadAppShell({ children }: { children: ReactNode }) {
+export function ThreadAppShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoading, isError } = useThreadUser();

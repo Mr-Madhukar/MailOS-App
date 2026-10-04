@@ -11,9 +11,11 @@ type Contact = RouterOutputs["contacts"]["search"]["contacts"][number];
 const SYNC_STORAGE_KEY = "thread:contacts-full-sync-at";
 const SYNC_TTL_MS = 24 * 60 * 60 * 1000;
 
+const MENTION_REGEX = /(?:^|\s)@([\w.-]*)$/;
+
 function getActiveMention(text: string, cursor: number) {
   const before = text.slice(0, cursor);
-  const match = before.match(/(?:^|\s)@([\w.-]*)$/);
+  const match = MENTION_REGEX.exec(before);
   if (!match) return null;
   const query = match[1] ?? "";
   const start = before.length - query.length - 1;
@@ -34,7 +36,7 @@ export function AgentMentionInput({
   onSubmitAction,
   disabled,
   placeholder,
-}: AgentMentionInputProps) {
+}: Readonly<AgentMentionInputProps>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [cursor, setCursor] = useState(0);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
