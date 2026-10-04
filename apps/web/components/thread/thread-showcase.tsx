@@ -12,7 +12,7 @@ type Slide = {
   front: ReactNode;
 };
 
-function Window({ title, children, accent = false }: { title: string; children: ReactNode; accent?: boolean }) {
+function Window({ title, children, accent = false }: Readonly<{ title: string; children: ReactNode; accent?: boolean }>) {
   return (
     <div className="thread-show-window" data-accent={accent}>
       <div className="thread-show-window-head">
@@ -27,7 +27,7 @@ function Window({ title, children, accent = false }: { title: string; children: 
   );
 }
 
-function SkelBar({ w, strong = false }: { w: string; strong?: boolean }) {
+function SkelBar({ w, strong = false }: Readonly<{ w: string; strong?: boolean }>) {
   return <span className="thread-skel-bar" style={{ width: w, opacity: strong ? 0.8 : undefined }} />;
 }
 

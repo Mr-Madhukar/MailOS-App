@@ -13,7 +13,7 @@ type RotatorItem = {
 };
 
 /** Abstract skeleton bar — UI shape without fake user data. */
-function Bar({ w, strong = false }: { w: number | string; strong?: boolean }) {
+function Bar({ w, strong = false }: Readonly<{ w: number | string; strong?: boolean }>) {
   return (
     <span
       className="thread-skel-bar"
@@ -22,7 +22,7 @@ function Bar({ w, strong = false }: { w: number | string; strong?: boolean }) {
   );
 }
 
-function PanelRow({ chip, chipTone, children }: { chip?: string; chipTone?: "hot" | "cool"; children: ReactNode }) {
+function PanelRow({ chip, chipTone, children }: Readonly<{ chip?: string; chipTone?: "hot" | "cool"; children: ReactNode }>) {
   return (
     <div className="thread-rotator-row">
       <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1 }}>{children}</div>

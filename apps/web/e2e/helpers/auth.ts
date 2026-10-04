@@ -4,7 +4,7 @@ const API_URL = process.env.E2E_API_URL ?? "http://127.0.0.1:8000";
 
 export async function demoLogin(page: Page, next = "/inbox") {
   await page.goto(`/api-auth/demo?next=${encodeURIComponent(next)}`, { waitUntil: "domcontentloaded" });
-  await page.waitForURL(new RegExp(next.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), { timeout: 45_000 });
+  await page.waitForURL(new RegExp(next.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)), { timeout: 45_000 });
 }
 
 export async function getDemoSessionCookie(request: APIRequestContext): Promise<string> {

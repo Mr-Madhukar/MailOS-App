@@ -36,16 +36,16 @@ export const threadQueueItemsTable = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     resolvedAt: timestamp("resolved_at"),
   },
-  (table) => ({
-    kindCheck: check(
+  (table) => [
+    check(
       "thread_queue_items_kind_check",
       sql`${table.kind} in ('email_send', 'email_draft', 'draft_send', 'calendar_invite', 'meeting_bundle', 'calendar_archive', 'calendar_delete', 'calendar_update')`,
     ),
-    statusCheck: check(
+    check(
       "thread_queue_items_status_check",
       sql`${table.status} in ('pending', 'processing', 'approved', 'dismissed', 'failed')`,
     ),
-  }),
+  ],
 );
 
 export type SelectQueueItem = typeof threadQueueItemsTable.$inferSelect;

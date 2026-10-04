@@ -360,7 +360,6 @@
   line-height: 1.7;
   color: var(--thread-muted, #d1d5db);
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .thread-privacy-back {

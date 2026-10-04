@@ -15,9 +15,9 @@ export const briefCacheTable = pgTable(
     briefJson: text("brief_json").notNull(),
     generatedAt: timestamp("generated_at").defaultNow().notNull(),
   },
-  (t) => ({
-    userDateIdx: uniqueIndex("brief_cache_user_date_idx").on(t.userId, t.dateKey),
-  }),
+  (t) => [
+    uniqueIndex("brief_cache_user_date_idx").on(t.userId, t.dateKey),
+  ],
 );
 
 export type SelectBriefCache = typeof briefCacheTable.$inferSelect;

@@ -21,11 +21,11 @@ export const threadContactsTable = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()),
   },
-  (table) => ({
-    userEmailUnique: uniqueIndex("thread_contacts_user_email_unique").on(table.userId, table.email),
-    userHandleIdx: index("thread_contacts_user_handle_idx").on(table.userId, table.handle),
-    userLastUsedIdx: index("thread_contacts_user_last_used_idx").on(table.userId, table.lastUsedAt),
-  }),
+  (table) => [
+    uniqueIndex("thread_contacts_user_email_unique").on(table.userId, table.email),
+    index("thread_contacts_user_handle_idx").on(table.userId, table.handle),
+    index("thread_contacts_user_last_used_idx").on(table.userId, table.lastUsedAt),
+  ],
 );
 
 export type SelectThreadContact = typeof threadContactsTable.$inferSelect;

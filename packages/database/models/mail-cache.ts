@@ -25,16 +25,16 @@ export const threadMailCacheTable = pgTable(
     labelIds: jsonb("label_ids").$type<string[]>().notNull().default([]),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => ({
-    userThreadUnique: uniqueIndex("thread_mail_cache_user_thread_unique").on(
+  (table) => [
+    uniqueIndex("thread_mail_cache_user_thread_unique").on(
       table.userId,
       table.threadId,
     ),
-    userRecentIdx: index("thread_mail_cache_user_recent_idx").on(
+    index("thread_mail_cache_user_recent_idx").on(
       table.userId,
       table.lastMessageAt,
     ),
-  }),
+  ],
 );
 
 export type SelectMailCacheRow = typeof threadMailCacheTable.$inferSelect;

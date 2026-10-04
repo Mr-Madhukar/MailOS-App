@@ -60,9 +60,11 @@ export function pruneBriefDismissals(stillActiveThreadIds: Set<string>) {
   if (changed) writeMap(map);
 }
 
+const THREAD_QUERY_REGEX = /[?&]thread=([^&]+)/;
+
 function threadIdFromHref(href?: string): string | undefined {
   if (!href) return undefined;
-  const match = href.match(/[?&]thread=([^&]+)/);
+  const match = THREAD_QUERY_REGEX.exec(href);
   if (!match?.[1]) return undefined;
   return decodeURIComponent(match[1]);
 }

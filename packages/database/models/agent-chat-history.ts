@@ -12,9 +12,9 @@ export const agentChatHistoryTable = pgTable(
     messages: jsonb("messages").$type<Array<{ role: "user" | "assistant"; content: string }>>().notNull().default([]),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (t) => ({
-    userIdx: uniqueIndex("agent_chat_history_user_id_idx").on(t.userId),
-  }),
+  (t) => [
+    uniqueIndex("agent_chat_history_user_id_idx").on(t.userId),
+  ],
 );
 
 export type SelectAgentChatHistory = typeof agentChatHistoryTable.$inferSelect;

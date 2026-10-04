@@ -12,9 +12,9 @@ export const briefDismissalsTable = pgTable(
     threadId: text("thread_id").notNull(),
     dismissedAt: timestamp("dismissed_at").defaultNow().notNull(),
   },
-  (t) => ({
-    userThreadIdx: uniqueIndex("brief_dismissals_user_thread_idx").on(t.userId, t.threadId),
-  }),
+  (t) => [
+    uniqueIndex("brief_dismissals_user_thread_idx").on(t.userId, t.threadId),
+  ],
 );
 
 export type SelectBriefDismissal = typeof briefDismissalsTable.$inferSelect;

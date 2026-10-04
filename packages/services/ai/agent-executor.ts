@@ -44,6 +44,12 @@ export type AgentExecutorContext = {
   sendCounter: SendCounter;
 };
 
+function getString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
 /**
  * Returns the async `executeTool(name, args)` function used by `runOpenAiToolLoop`.
  * Wrap the returned function to inject `onToolCall(name)` for streaming status events.
@@ -196,9 +202,9 @@ async function executeAgentQueueEmail(args: Record<string, unknown>, ctx: AgentE
 
 async function executeAgentQueueCalendarInvite(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, queue, actions } = ctx;
-  const summary = String(args.summary ?? "").trim();
-  const startDateTime = String(args.startDateTime ?? "").trim();
-  const endDateTime = String(args.endDateTime ?? "").trim();
+  const summary = getString(args.summary).trim();
+  const startDateTime = getString(args.startDateTime).trim();
+  const endDateTime = getString(args.endDateTime).trim();
   if (!summary || !startDateTime || !endDateTime) {
     return JSON.stringify({ success: false, error: "summary, startDateTime, and endDateTime are required" });
   }
@@ -240,10 +246,10 @@ async function executeAgentQueueCalendarInvite(args: Record<string, unknown>, ct
 
 async function executeAgentRescheduleEvent(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, calendar, queue, actions } = ctx;
-  const eventId = String(args.eventId ?? "").trim();
-  const startDateTime = String(args.startDateTime ?? "").trim();
-  const endDateTime = String(args.endDateTime ?? "").trim();
-  const timeZone = String(args.timeZone ?? "UTC").trim();
+  const eventId = getString(args.eventId).trim();
+  const startDateTime = getString(args.startDateTime).trim();
+  const endDateTime = getString(args.endDateTime).trim();
+  const timeZone = getString(args.timeZone, "UTC").trim();
   if (!eventId || !startDateTime || !endDateTime) {
     return JSON.stringify({ success: false, error: "eventId, startDateTime, and endDateTime are required" });
   }
@@ -278,7 +284,7 @@ async function executeAgentRescheduleEvent(args: Record<string, unknown>, ctx: A
 
 async function executeAgentCancelEvent(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, calendar, queue, actions } = ctx;
-  const eventId = String(args.eventId ?? "").trim();
+  const eventId = getString(args.eventId).trim();
   if (!eventId) return JSON.stringify({ success: false, error: "eventId is required" });
   const existing = await calendar.getEvent(tenantId, eventId);
   const item = await queue.enqueueCalendarDelete(
@@ -308,11 +314,11 @@ async function executeAgentCancelEvent(args: Record<string, unknown>, ctx: Agent
 
 async function executeAgentUpdateEventDetails(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, calendar, queue, actions } = ctx;
-  const eventId = String(args.eventId ?? "").trim();
+  const eventId = getString(args.eventId).trim();
   if (!eventId) return JSON.stringify({ success: false, error: "eventId is required" });
-  const newSummary = args.summary ? String(args.summary).trim() : undefined;
-  const description = args.description ? String(args.description) : undefined;
-  const location = args.location ? String(args.location) : undefined;
+  const newSummary = typeof args.summary === "string" ? args.summary.trim() : undefined;
+  const description = typeof args.description === "string" ? args.description : undefined;
+  const location = typeof args.location === "string" ? args.location : undefined;
   if (!newSummary && !description && !location) {
     return JSON.stringify({ success: false, error: "At least one of summary, description, or location is required" });
   }
@@ -368,7 +374,7 @@ async function executeAgentListOrSearchInbox(args: Record<string, unknown>, ctx:
 
 async function executeAgentGetThread(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, userEmail, inbox, actions } = ctx;
-  const threadId = String(args.threadId ?? "");
+  const threadId = getString(args.threadId);
   const thread = await inbox.getThread(tenantId, threadId, { userEmail });
   if (!thread) return JSON.stringify({ error: "Thread not found" });
   const fencedMessages = (thread.messages ?? []).slice(0, 5).map((m) => ({
@@ -433,14 +439,14 @@ async function executeQueueManagementTools(name: string, args: Record<string, un
       return JSON.stringify({ items });
     }
     case "approve_queue_item": {
-      const itemId = String(args.itemId ?? "").trim();
+      const itemId = getString(args.itemId).trim();
       if (!itemId) return JSON.stringify({ success: false, error: "itemId is required" });
       const result = await queue.approve(tenantId, itemId);
       actions.push({ kind: "queue_list", title: "Queue item approved", detail: result.title, href: "/queue", lines: [`${result.kind}: ${result.title}`] });
       return JSON.stringify({ success: true, itemId, status: result.status });
     }
     case "dismiss_queue_item": {
-      const itemId = String(args.itemId ?? "").trim();
+      const itemId = getString(args.itemId).trim();
       if (!itemId) return JSON.stringify({ success: false, error: "itemId is required" });
       await queue.dismiss(tenantId, itemId);
       actions.push({ kind: "queue_list", title: "Queue item dismissed", detail: itemId, href: "/queue" });
@@ -465,7 +471,7 @@ async function executeQueueEnqueueTools(name: string, args: Record<string, unkno
     case "update_event_details":
       return executeAgentUpdateEventDetails(args, ctx);
     case "quick_add_event": {
-      const text = String(args.text ?? "").trim();
+      const text = getString(args.text).trim();
       if (!text) return JSON.stringify({ success: false, error: "text is required" });
       const item = await queue.enqueueQuickAddCalendar(tenantId, { text }, { origin: "agent" });
       const disposition = item.status === "approved" ? "sent" : "queued";
@@ -480,7 +486,7 @@ async function executeQueueEnqueueTools(name: string, args: Record<string, unkno
       return JSON.stringify({ success: true, queued: disposition === "queued", itemId: item.id });
     }
     case "send_draft": {
-      const draftId = String(args.draftId ?? "").trim();
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return JSON.stringify({ success: false, error: "draftId is required" });
       const item = await queue.enqueueDraftSend(tenantId, { draftId }, { origin: "agent" });
       const disposition = item.status === "approved" ? "sent" : "queued";
@@ -507,17 +513,17 @@ async function executeQueueActionTools(name: string, args: Record<string, unknow
 
 async function executeAgentCreateDraft(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, inbox, actions } = ctx;
-  const to = String(args.to ?? "").trim();
-  const subject = String(args.subject ?? "").trim();
-  const body = String(args.body ?? "").trim();
+  const to = getString(args.to).trim();
+  const subject = getString(args.subject).trim();
+  const body = getString(args.body).trim();
   if (!to || !subject || !body) return JSON.stringify({ success: false, error: "to, subject, and body are required" });
   const draft = await inbox.createDraft(tenantId, {
     to,
     subject,
     body,
-    threadId: args.threadId ? String(args.threadId) : undefined,
-    cc: args.cc ? String(args.cc) : undefined,
-    bcc: args.bcc ? String(args.bcc) : undefined,
+    threadId: typeof args.threadId === "string" ? args.threadId : undefined,
+    cc: typeof args.cc === "string" ? args.cc : undefined,
+    bcc: typeof args.bcc === "string" ? args.bcc : undefined,
   });
   actions.push({ kind: "thread", title: "Draft saved", detail: subject, href: "/inbox" });
   return JSON.stringify({ success: true, draftId: draft.id, subject, to });
@@ -525,10 +531,10 @@ async function executeAgentCreateDraft(args: Record<string, unknown>, ctx: Agent
 
 async function executeAgentUpdateDraft(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, inbox } = ctx;
-  const draftId = String(args.draftId ?? "").trim();
-  const to = String(args.to ?? "").trim();
-  const subject = String(args.subject ?? "").trim();
-  const body = String(args.body ?? "");
+  const draftId = getString(args.draftId).trim();
+  const to = getString(args.to).trim();
+  const subject = getString(args.subject).trim();
+  const body = getString(args.body);
   if (!draftId || !to || !subject) {
     return JSON.stringify({ success: false, error: "draftId, to, and subject are required" });
   }
@@ -549,14 +555,14 @@ async function executeDraftActionTools(name: string, args: Record<string, unknow
       return JSON.stringify(result);
     }
     case "get_draft": {
-      const draftId = String(args.draftId ?? "").trim();
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return JSON.stringify({ success: false, error: "draftId is required" });
       const draft = await inbox.getDraft(tenantId, draftId);
       if (!draft) return JSON.stringify({ success: false, error: "Draft not found" });
       return JSON.stringify({ success: true, draft: { ...draft, body: fenceEmailData(draft.body) } });
     }
     case "delete_draft": {
-      const draftId = String(args.draftId ?? "").trim();
+      const draftId = getString(args.draftId).trim();
       if (!draftId) return JSON.stringify({ success: false, error: "draftId is required" });
       await inbox.deleteDraft(tenantId, draftId);
       actions.push({ kind: "thread", title: "Draft deleted", detail: draftId, href: "/inbox?view=drafts" });
@@ -584,7 +590,7 @@ async function executeThreadTriageTools(name: string, args: Record<string, unkno
     "mark_thread_read", "mark_thread_unread", "mute_thread", "unmute_thread",
   ]);
   if (!TRIAGE_ACTIONS.has(name)) return null;
-  const threadId = String(args.threadId ?? "").trim();
+  const threadId = getString(args.threadId).trim();
   if (!threadId) return JSON.stringify({ success: false, error: "threadId is required" });
 
   const { tenantId, inbox, actions } = ctx;
@@ -642,8 +648,8 @@ async function executeAgentApplyOrRemoveLabel(
   ctx: AgentExecutorContext,
 ): Promise<string> {
   const { tenantId, inbox, actions } = ctx;
-  const threadId = String(args.threadId ?? "").trim();
-  const labelId = String(args.labelId ?? "").trim();
+  const threadId = getString(args.threadId).trim();
+  const labelId = getString(args.labelId).trim();
   if (!threadId || !labelId) return JSON.stringify({ success: false, error: "threadId and labelId are required" });
   if (isApply) {
     await inbox.applyLabel(tenantId, threadId, labelId);
@@ -669,7 +675,7 @@ async function executeAgentBatchModifyThreads(args: Record<string, unknown>, ctx
 
 async function executeAgentModifyMessage(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, inbox } = ctx;
-  const messageId = String(args.messageId ?? "").trim();
+  const messageId = getString(args.messageId).trim();
   if (!messageId) return JSON.stringify({ success: false, error: "messageId is required" });
   await inbox.modifyMessage(tenantId, messageId, {
     addLabelIds: Array.isArray(args.addLabelIds) ? args.addLabelIds.map(String) : undefined,
@@ -706,10 +712,10 @@ async function executeCalendarTools(name: string, args: Record<string, unknown>,
       const query = typeof args.query === "string" ? args.query.trim() : undefined;
       const now = new Date();
       const timeMin =
-        String(args.timeMin ?? "").trim() ||
+        getString(args.timeMin).trim() ||
         new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const timeMax =
-        String(args.timeMax ?? "").trim() ||
+        getString(args.timeMax).trim() ||
         new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
       const maxResults = Math.min(Math.max(Number(args.maxResults) || 20, 1), 50);
       const result = await calendar.listEvents(tenantId, {
@@ -721,16 +727,16 @@ async function executeCalendarTools(name: string, args: Record<string, unknown>,
       return JSON.stringify({ events: result.events, count: result.events.length, query: query ?? null });
     }
     case "check_free_busy": {
-      const startDateTime = String(args.startDateTime ?? "").trim();
-      const endDateTime = String(args.endDateTime ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const startDateTime = getString(args.startDateTime).trim();
+      const endDateTime = getString(args.endDateTime).trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       if (!startDateTime || !endDateTime) return JSON.stringify({ success: false, error: "startDateTime and endDateTime are required" });
       const result = await calendar.checkFreeBusy(tenantId, { startDateTime, endDateTime, timeZone });
       return JSON.stringify(result);
     }
     case "respond_to_event": {
-      const eventId = String(args.eventId ?? "").trim();
-      const responseRaw = String(args.response ?? "").trim().toLowerCase();
+      const eventId = getString(args.eventId).trim();
+      const responseRaw = getString(args.response).trim().toLowerCase();
       const response = responseRaw as "accepted" | "declined" | "tentative";
       if (!eventId || !["accepted", "declined", "tentative"].includes(response)) {
         return JSON.stringify({ success: false, error: "eventId and response (accepted/declined/tentative) are required" });
@@ -740,7 +746,7 @@ async function executeCalendarTools(name: string, args: Record<string, unknown>,
       return JSON.stringify({ success: true, eventId, response, event: updated });
     }
     case "get_calendar_event": {
-      const eventId = String(args.eventId ?? "").trim();
+      const eventId = getString(args.eventId).trim();
       if (!eventId) return JSON.stringify({ success: false, error: "eventId is required" });
       const event = await calendar.getEvent(tenantId, eventId);
       if (!event) return JSON.stringify({ success: false, error: "Event not found" });
@@ -757,8 +763,8 @@ async function executeCalendarTools(name: string, args: Record<string, unknown>,
 
 async function executeAgentContactIntel(args: Record<string, unknown>, ctx: AgentExecutorContext): Promise<string> {
   const { tenantId, userEmail, actions } = ctx;
-  const email = String(args.email ?? "").trim();
-  const contactName = args.name ? String(args.name).trim() : undefined;
+  const email = getString(args.email).trim();
+  const contactName = typeof args.name === "string" ? args.name.trim() : undefined;
   if (!email) return JSON.stringify({ success: false, error: "email is required" });
   const intel = await getContactIntel({ tenantId, email, name: contactName, userEmail });
   const searchHref = "/inbox?q=" + encodeURIComponent("from:" + email);
@@ -773,11 +779,11 @@ async function executeAgentFindMeetingSlots(args: Record<string, unknown>, ctx: 
   const result = await findMeetingSlots({
     tenantId,
     durationMinutes,
-    preferredStartDate: args.preferredStartDate ? String(args.preferredStartDate) : undefined,
-    preferredEndDate: args.preferredEndDate ? String(args.preferredEndDate) : undefined,
-    timeZone: args.timeZone ? String(args.timeZone) : undefined,
-    attendeeEmail: args.attendeeEmail ? String(args.attendeeEmail) : undefined,
-    context: args.context ? String(args.context) : undefined,
+    preferredStartDate: typeof args.preferredStartDate === "string" ? args.preferredStartDate : undefined,
+    preferredEndDate: typeof args.preferredEndDate === "string" ? args.preferredEndDate : undefined,
+    timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined,
+    attendeeEmail: typeof args.attendeeEmail === "string" ? args.attendeeEmail : undefined,
+    context: typeof args.context === "string" ? args.context : undefined,
   });
   if (result.slots.length > 0) {
     actions.push({ kind: "calendar", title: `${result.slots.length} meeting slots found`, detail: result.slots[0]!.label, href: "/calendar" });
@@ -789,35 +795,35 @@ async function executeAiAndIntelTools(name: string, args: Record<string, unknown
   const { tenantId, userEmail, actions } = ctx;
   switch (name) {
     case "get_daily_brief": {
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       const brief = await generateDailyBrief({ tenantId, userEmail, timeZone });
       actions.push({ kind: "thread", title: "Daily Brief", detail: "View your daily brief", href: "/brief" });
       return JSON.stringify(brief);
     }
     case "get_smart_replies": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return JSON.stringify({ success: false, error: "threadId is required" });
       const result = await getSmartReplies({ tenantId, threadId, userEmail });
       actions.push({ kind: "thread", title: "Smart replies ready", detail: `${result.suggestions.length} suggestions`, href: `/inbox?thread=${encodeURIComponent(threadId)}` });
       return JSON.stringify(result);
     }
     case "get_meeting_prep": {
-      const eventId = String(args.eventId ?? "").trim();
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const eventId = getString(args.eventId).trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       if (!eventId) return JSON.stringify({ success: false, error: "eventId is required" });
       const prep = await getMeetingPrep({ tenantId, eventId, timeZone });
       actions.push({ kind: "calendar", title: "Meeting prep ready", detail: prep.summary ?? eventId, href: `/calendar?event=${encodeURIComponent(eventId)}` });
       return JSON.stringify(prep);
     }
     case "get_thread_context": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return JSON.stringify({ success: false, error: "threadId is required" });
       const ctx2 = await getThreadContext({ tenantId, threadId, userEmail });
       actions.push({ kind: "thread", title: "Thread context", detail: ctx2.nextAction ?? threadId, href: `/inbox?thread=${encodeURIComponent(threadId)}` });
       return JSON.stringify(ctx2);
     }
     case "get_missed_followups": {
-      const timeZone = String(args.timeZone ?? "UTC").trim();
+      const timeZone = getString(args.timeZone, "UTC").trim();
       const followups = await getMissedFollowUps({ tenantId, userEmail, timeZone });
       actions.push({ kind: "thread", title: `${followups.length} missed follow-ups`, detail: "Meetings with no follow-up email", href: "/brief" });
       return JSON.stringify({ followups, count: followups.length });
@@ -825,7 +831,7 @@ async function executeAiAndIntelTools(name: string, args: Record<string, unknown
     case "get_contact_intel":
       return executeAgentContactIntel(args, ctx);
     case "summarize_thread": {
-      const threadId = String(args.threadId ?? "").trim();
+      const threadId = getString(args.threadId).trim();
       if (!threadId) return JSON.stringify({ success: false, error: "threadId is required" });
       const summary = await summarizeThread({ tenantId, threadId, userEmail });
       actions.push({ kind: "thread", title: "Thread summarized", detail: summary.subject, href: `/inbox?thread=${encodeURIComponent(threadId)}` });

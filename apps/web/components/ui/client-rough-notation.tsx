@@ -12,7 +12,7 @@ export function ClientRoughNotation({
   children,
   fallbackClassName,
   ...props
-}: ClientRoughNotationProps) {
+}: Readonly<ClientRoughNotationProps>) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -29,9 +29,9 @@ export function ClientRoughNotation({
 export function ClientRoughText({
   children,
   className,
-}: {
+}: Readonly<{
   children: ReactNode;
   className?: string;
-}) {
+}>) {
   return <span className={className}>{children}</span>;
 }

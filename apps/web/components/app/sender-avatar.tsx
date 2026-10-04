@@ -15,6 +15,11 @@ function senderInitial(from?: string) {
   return label.charAt(0).toUpperCase() || "?";
 }
 
+function getIsSelf(email: string, selfEmail?: string): boolean {
+  if (!selfEmail || !email) return false;
+  return email.toLowerCase() === selfEmail.trim().toLowerCase();
+}
+
 type SenderAvatarProps = Readonly<{
   from?: string;
   selfEmail?: string;
@@ -30,9 +35,7 @@ export function SenderAvatar({
 }: SenderAvatarProps) {
   const email = parseEmail(from);
   const initial = senderInitial(from);
-  const isSelf = Boolean(
-    selfEmail && email?.toLowerCase() === selfEmail.trim().toLowerCase(),
-  );
+  const isSelf = getIsSelf(email, selfEmail);
   const [failed, setFailed] = useState(false);
 
   const photoSrc = useMemo(() => {
