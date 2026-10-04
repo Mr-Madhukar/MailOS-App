@@ -205,145 +205,198 @@ export function enrichThreadOpenApi(
 
   // ── Reference paths (not tRPC REST — documented for judges) ──────────────
 
-  addReferencePath(document, "/mcp", "post", {
-    tags: ["MCP & Webhooks"],
-    summary: "Thread MCP server (JSON-RPC 2.0)",
-    description: [
-      "Full **MCP 2024-11-05** server with **57 domain tools**: inbox, queue, calendar, AI, Corsair DB search.",
-      "",
-      "**Public methods** (no auth): `initialize`, `tools/list`, `resources/list`, `prompts/list`",
-      "",
-      "**Protected methods**: `tools/call`, `resources/read`, `prompts/get` — session cookie or MCP bearer.",
-      "",
-      "See `mcp-server.json` in the repo for the complete tool manifest.",
-      "",
-      "### Example: tools/list",
-      "",
-      "```json",
-      '{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }',
-      "```",
-      "",
-      "### Example: tools/call (queue email)",
-      "",
-      "```json",
-      '{ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "queue_email", "arguments": { "to": "a@b.com", "subject": "Hi", "body": "Hello" } } }',
-      "```",
-    ].join("\n"),
-    responses: {
-      "200": { description: "JSON-RPC 2.0 response" },
-      "401": { description: "Authentication required for tools/call" },
+  const referenceEntries: Array<{
+    path: string;
+    method: string;
+    operation: OpenApiOperation;
+  }> = [
+    {
+      path: "/mcp",
+      method: "post",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Thread MCP server (JSON-RPC 2.0)",
+        description: [
+          "Full **MCP 2024-11-05** server with **57 domain tools**: inbox, queue, calendar, AI, Corsair DB search.",
+          "",
+          "**Public methods** (no auth): `initialize`, `tools/list`, `resources/list`, `prompts/list`",
+          "",
+          "**Protected methods**: `tools/call`, `resources/read`, `prompts/get` — session cookie or MCP bearer.",
+          "",
+          "See `mcp-server.json` in the repo for the complete tool manifest.",
+          "",
+          "### Example: tools/list",
+          "",
+          "```json",
+          '{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }',
+          "```",
+          "",
+          "### Example: tools/call (queue email)",
+          "",
+          "```json",
+          '{ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "queue_email", "arguments": { "to": "a@b.com", "subject": "Hi", "body": "Hello" } } }',
+          "```",
+        ].join("\n"),
+        responses: {
+          "200": { description: "JSON-RPC 2.0 response" },
+          "401": { description: "Authentication required for tools/call" },
+        },
+      },
     },
-  });
+    {
+      path: "/mcp/corsair",
+      method: "post",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Official Corsair MCP adapter (@corsair-dev/mcp)",
+        description: [
+          "Dynamic Corsair SDK access: `corsair_setup`, `list_operations`, `get_schema`, `run_script`.",
+          "",
+          "Requires the same auth as `/mcp`. Uses Corsair **Permissions** UI for destructive operations.",
+        ].join("\n"),
+        responses: { "200": { description: "JSON-RPC 2.0 response" } },
+      },
+    },
+    {
+      path: "/webhooks/gmail",
+      method: "post",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Gmail Pub/Sub webhook (Corsair)",
+        description:
+          "Google Pub/Sub push endpoint. Validates CORSAIR_WEBHOOK_SECRET, resolves tenant, runs incremental Gmail history sync via Corsair.",
+        responses: { "200": { description: "Acknowledged" }, "503": { description: "Webhook secret not configured" } },
+      },
+    },
+    {
+      path: "/webhooks/calendar",
+      method: "post",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Google Calendar push notification webhook",
+        description: "Calendar push channel callback — refreshes events for the tenant via Corsair.",
+        responses: { "200": { description: "Acknowledged" } },
+      },
+    },
+    {
+      path: "/agent/stream",
+      method: "post",
+      operation: {
+        tags: ["Agent"],
+        summary: "Agent streaming chat (Server-Sent Events)",
+        description: [
+          "Streaming variant of `POST /api/agent/chat`. Returns SSE events: `status`, `token`, `complete`, `error`.",
+          "",
+          "Supports sessionId, focus thread/event, tool memory. Same 57 tools as MCP.",
+        ].join("\n"),
+        responses: { "200": { description: "text/event-stream" } },
+      },
+    },
+    {
+      path: "/api-connect/gmail",
+      method: "get",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Connect Gmail via Corsair OAuth",
+        description: `Browser redirect flow. Implemented on Next.js at ${clientUrl}/api-connect/gmail. Completes Corsair OAuth and registers Gmail watch.`,
+        responses: { "302": { description: "Redirect to Google consent or back to app" } },
+      },
+    },
+    {
+      path: "/api-connect/calendar",
+      method: "get",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Connect Google Calendar via Corsair OAuth",
+        description: `Browser redirect at ${clientUrl}/api-connect/calendar. Registers Calendar push channel on success.`,
+        responses: { "302": { description: "Redirect to Google consent or back to app" } },
+      },
+    },
+    {
+      path: "/health",
+      method: "get",
+      operation: {
+        tags: ["Health"],
+        summary: "Liveness probe",
+        description: "Returns `{ ok: true }` when the API process is running. No auth required.",
+        responses: { "200": { description: "Service alive" } },
+      },
+    },
+    {
+      path: "/ready",
+      method: "get",
+      operation: {
+        tags: ["Health"],
+        summary: "Readiness probe",
+        description: "Checks database connectivity and Corsair configuration. Returns 503 if not ready.",
+        responses: { "200": { description: "Ready to serve traffic" }, "503": { description: "Not ready" } },
+      },
+    },
+    {
+      path: "/metrics",
+      method: "get",
+      operation: {
+        tags: ["Health"],
+        summary: "Prometheus metrics",
+        description: "Prometheus text format metrics (request counts, latencies). Requires docs auth in production.",
+        responses: { "200": { description: "text/plain Prometheus metrics" } },
+      },
+    },
+    {
+      path: "/sync/events",
+      method: "get",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Real-time sync events (SSE)",
+        description: [
+          "Server-Sent Events stream for UI cache invalidation.",
+          "",
+          "Events: `gmail.sync`, `calendar.sync`, `queue.updated` — inbox/calendar pages auto-refresh.",
+        ].join("\n"),
+        responses: { "200": { description: "text/event-stream" } },
+      },
+    },
+    {
+      path: "/webhooks/corsair",
+      method: "post",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Corsair internal webhook",
+        description: "Corsair plugin webhook hooks endpoint. Validates secret, routes to tenant handlers.",
+        responses: { "200": { description: "Acknowledged" } },
+      },
+    },
+    {
+      path: "/openapi.json",
+      method: "get",
+      operation: {
+        tags: ["Health"],
+        summary: "OpenAPI 3.1 specification",
+        description: "Machine-readable spec for this Scalar UI. Generated from tRPC OpenAPI + Thread enrichment.",
+        responses: { "200": { description: "application/json OpenAPI document" } },
+      },
+    },
+    {
+      path: "/api/corsair/{path}",
+      method: "get",
+      operation: {
+        tags: ["MCP & Webhooks"],
+        summary: "Corsair SDK management API",
+        description: [
+          "Dynamic Corsair management routes via `corsair.toExpressHandler`.",
+          "",
+          "Includes connection status, backfill triggers, audit logs — see Corsair SDK docs.",
+          "",
+          "Base path: `/api/corsair/*` (also POST/PATCH/DELETE as supported by Corsair).",
+        ].join("\n"),
+        responses: { "200": { description: "Corsair management response" }, "503": { description: "Corsair not configured" } },
+      },
+    },
+  ];
 
-  addReferencePath(document, "/mcp/corsair", "post", {
-    tags: ["MCP & Webhooks"],
-    summary: "Official Corsair MCP adapter (@corsair-dev/mcp)",
-    description: [
-      "Dynamic Corsair SDK access: `corsair_setup`, `list_operations`, `get_schema`, `run_script`.",
-      "",
-      "Requires the same auth as `/mcp`. Uses Corsair **Permissions** UI for destructive operations.",
-    ].join("\n"),
-    responses: { "200": { description: "JSON-RPC 2.0 response" } },
-  });
-
-  addReferencePath(document, "/webhooks/gmail", "post", {
-    tags: ["MCP & Webhooks"],
-    summary: "Gmail Pub/Sub webhook (Corsair)",
-    description:
-      "Google Pub/Sub push endpoint. Validates CORSAIR_WEBHOOK_SECRET, resolves tenant, runs incremental Gmail history sync via Corsair.",
-    responses: { "200": { description: "Acknowledged" }, "503": { description: "Webhook secret not configured" } },
-  });
-
-  addReferencePath(document, "/webhooks/calendar", "post", {
-    tags: ["MCP & Webhooks"],
-    summary: "Google Calendar push notification webhook",
-    description: "Calendar push channel callback — refreshes events for the tenant via Corsair.",
-    responses: { "200": { description: "Acknowledged" } },
-  });
-
-  addReferencePath(document, "/agent/stream", "post", {
-    tags: ["Agent"],
-    summary: "Agent streaming chat (Server-Sent Events)",
-    description: [
-      "Streaming variant of `POST /api/agent/chat`. Returns SSE events: `status`, `token`, `complete`, `error`.",
-      "",
-      "Supports sessionId, focus thread/event, tool memory. Same 57 tools as MCP.",
-    ].join("\n"),
-    responses: { "200": { description: "text/event-stream" } },
-  });
-
-  addReferencePath(document, "/api-connect/gmail", "get", {
-    tags: ["MCP & Webhooks"],
-    summary: "Connect Gmail via Corsair OAuth",
-    description: `Browser redirect flow. Implemented on Next.js at ${clientUrl}/api-connect/gmail. Completes Corsair OAuth and registers Gmail watch.`,
-    responses: { "302": { description: "Redirect to Google consent or back to app" } },
-  });
-
-  addReferencePath(document, "/api-connect/calendar", "get", {
-    tags: ["MCP & Webhooks"],
-    summary: "Connect Google Calendar via Corsair OAuth",
-    description: `Browser redirect at ${clientUrl}/api-connect/calendar. Registers Calendar push channel on success.`,
-    responses: { "302": { description: "Redirect to Google consent or back to app" } },
-  });
-
-  addReferencePath(document, "/health", "get", {
-    tags: ["Health"],
-    summary: "Liveness probe",
-    description: "Returns `{ ok: true }` when the API process is running. No auth required.",
-    responses: { "200": { description: "Service alive" } },
-  });
-
-  addReferencePath(document, "/ready", "get", {
-    tags: ["Health"],
-    summary: "Readiness probe",
-    description: "Checks database connectivity and Corsair configuration. Returns 503 if not ready.",
-    responses: { "200": { description: "Ready to serve traffic" }, "503": { description: "Not ready" } },
-  });
-
-  addReferencePath(document, "/metrics", "get", {
-    tags: ["Health"],
-    summary: "Prometheus metrics",
-    description: "Prometheus text format metrics (request counts, latencies). Requires docs auth in production.",
-    responses: { "200": { description: "text/plain Prometheus metrics" } },
-  });
-
-  addReferencePath(document, "/sync/events", "get", {
-    tags: ["MCP & Webhooks"],
-    summary: "Real-time sync events (SSE)",
-    description: [
-      "Server-Sent Events stream for UI cache invalidation.",
-      "",
-      "Events: `gmail.sync`, `calendar.sync`, `queue.updated` — inbox/calendar pages auto-refresh.",
-    ].join("\n"),
-    responses: { "200": { description: "text/event-stream" } },
-  });
-
-  addReferencePath(document, "/webhooks/corsair", "post", {
-    tags: ["MCP & Webhooks"],
-    summary: "Corsair internal webhook",
-    description: "Corsair plugin webhook hooks endpoint. Validates secret, routes to tenant handlers.",
-    responses: { "200": { description: "Acknowledged" } },
-  });
-
-  addReferencePath(document, "/openapi.json", "get", {
-    tags: ["Health"],
-    summary: "OpenAPI 3.1 specification",
-    description: "Machine-readable spec for this Scalar UI. Generated from tRPC OpenAPI + Thread enrichment.",
-    responses: { "200": { description: "application/json OpenAPI document" } },
-  });
-
-  addReferencePath(document, "/api/corsair/{path}", "get", {
-    tags: ["MCP & Webhooks"],
-    summary: "Corsair SDK management API",
-    description: [
-      "Dynamic Corsair management routes via `corsair.toExpressHandler`.",
-      "",
-      "Includes connection status, backfill triggers, audit logs — see Corsair SDK docs.",
-      "",
-      "Base path: `/api/corsair/*` (also POST/PATCH/DELETE as supported by Corsair).",
-    ].join("\n"),
-    responses: { "200": { description: "Corsair management response" }, "503": { description: "Corsair not configured" } },
-  });
+  for (const entry of referenceEntries) {
+    addReferencePath(document, entry.path, entry.method, entry.operation);
+  }
 
   // ── Apply full route catalog (~116 endpoints) ──────────────────────────────
 
@@ -611,64 +664,61 @@ export function enrichThreadOpenApi(
 
   // ── curl code samples (Scalar x-codeSamples) ─────────────────────────────
 
-  addCodeSample(
-    document,
-    "/authentication/sign-in",
-    "post",
-    "curl",
-    "Sign in (curl)",
-    String.raw`curl -X POST '${baseUrl}/api/authentication/sign-in' \
+  const curlSamples: Array<{
+    path: string;
+    method: string;
+    label: string;
+    source: string;
+  }> = [
+    {
+      path: "/authentication/sign-in",
+      method: "post",
+      label: "Sign in (curl)",
+      source: String.raw`curl -X POST '${baseUrl}/api/authentication/sign-in' \
   -H 'Content-Type: application/json' \
   -d '{"email":"demo@mailos.dev","password":"DemoPass123!","turnstileToken":""}' \
   -c cookies.txt`,
-  );
-
-  addCodeSample(
-    document,
-    "/inbox/threads",
-    "get",
-    "curl",
-    "List threads (cookie auth)",
-    String.raw`curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \
+    },
+    {
+      path: "/inbox/threads",
+      method: "get",
+      label: "List threads (cookie auth)",
+      source: String.raw`curl '${baseUrl}/api/inbox/threads?maxResults=10&query=is:unread' \
   -b cookies.txt`,
-  );
-
-  addCodeSample(
-    document,
-    "/queue/enqueue/email",
-    "post",
-    "curl",
-    "Queue email (with CSRF)",
-    String.raw`curl -X POST '${baseUrl}/api/queue/enqueue/email' \
+    },
+    {
+      path: "/queue/enqueue/email",
+      method: "post",
+      label: "Queue email (with CSRF)",
+      source: String.raw`curl -X POST '${baseUrl}/api/queue/enqueue/email' \
   -H 'Content-Type: application/json' \
   -H 'X-Thread-CSRF: 1' \
   -H 'Origin: ${clientUrl}' \
   -b cookies.txt \
   -d '{"mode":"send","email":{"to":"a@b.com","subject":"Hi","body":"Hello"},"title":"Test"}'`,
-  );
-
-  addCodeSample(
-    document,
-    "/mcp",
-    "post",
-    "curl",
-    "MCP tools/list",
-    String.raw`curl -X POST '${baseUrl}/mcp' \
+    },
+    {
+      path: "/mcp",
+      method: "post",
+      label: "MCP tools/list",
+      source: String.raw`curl -X POST '${baseUrl}/mcp' \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
-  );
-
-  addCodeSample(
-    document,
-    "/mcp/corsair",
-    "post",
-    "curl",
-    "Corsair list_operations",
-    String.raw`curl -X POST '${baseUrl}/mcp/corsair' \
+    },
+    {
+      path: "/mcp/corsair",
+      method: "post",
+      label: "Corsair list_operations",
+      source: String.raw`curl -X POST '${baseUrl}/mcp/corsair' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_MCP_KEY' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_operations","arguments":{}}}'`,
-  );
+    },
+  ];
+
+  for (const sample of curlSamples) {
+    addCodeSample(document, sample.path, sample.method, "curl", sample.label, sample.source);
+  }
 
   // ── Query parameter documentation ────────────────────────────────────────
 
@@ -684,20 +734,18 @@ export function enrichThreadOpenApi(
     calendarId: { description: "Calendar ID (default: primary)", example: "primary" },
   });
 
-  enrichQueryParams(document, "/inbox/db/threads/search", "get", {
-    q: { description: "Search query string", example: "proposal" },
-    limit: { description: "Max results (default 20)", example: 20 },
-  });
+  const dbSearchHints: Array<{ path: string; qDesc: string; example: string; limitDesc: string }> = [
+    { path: "/inbox/db/threads/search", qDesc: "Search query string", example: "proposal", limitDesc: "Max results (default 20)" },
+    { path: "/inbox/db/messages/search", qDesc: "Full-text search in message bodies", example: "invoice", limitDesc: "Max results" },
+    { path: "/calendar/db/events/search", qDesc: "Event title/description search", example: "standup", limitDesc: "Max results" },
+  ];
 
-  enrichQueryParams(document, "/inbox/db/messages/search", "get", {
-    q: { description: "Full-text search in message bodies", example: "invoice" },
-    limit: { description: "Max results", example: 20 },
-  });
-
-  enrichQueryParams(document, "/calendar/db/events/search", "get", {
-    q: { description: "Event title/description search", example: "standup" },
-    limit: { description: "Max results", example: 20 },
-  });
+  for (const hint of dbSearchHints) {
+    enrichQueryParams(document, hint.path, "get", {
+      q: { description: hint.qDesc, example: hint.example },
+      limit: { description: hint.limitDesc, example: 20 },
+    });
+  }
 
   enrichQueryParams(document, "/queue/items", "get", {
     status: { description: "Filter: pending | processing | approved | dismissed | failed", example: "pending" },
